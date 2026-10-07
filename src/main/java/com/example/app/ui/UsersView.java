@@ -1,0 +1,143 @@
+package com.example.app.ui;
+
+import com.example.app.domain.Role;
+import com.example.app.domain.User;
+import com.example.app.error.BusinessException;
+import com.example.app.service.AppServices;
+import javafx.collections.FXCollections;
+import javafx.geometry.Insets;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.ChoiceBox;
+import javafx.scene.control.ChoiceDialog;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
+
+import java.util.Optional;
+
+/** User accounts. Admins only. Admins cannot change their own role or disable themselves. */
+final class UsersView extends VBox {
+
+    private final AppServices services;
+    private final TableView<User> table = Ui.table();
+    private final Label message = Ui.muted("");
+
+    UsersView(AppServices services) {
+        this.services = services;
+        setSpacing(10);
+        setPadding(new Insets(16));
+
+        table.getColumns().addAll(
+                Ui.<User>column("Username", 200, User::username),
+                Ui.<User>column("Role", 120, u -> u.role().name()),
+                Ui.<User>column("Active", 80, u -> u.active() ? "Yes" : "No"),
+                Ui.<User>column("Must change password", 160, u -> u.mustChangePassword() ? "Yes" : "No"));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Button create = new Button("New user...");
+        create.setOnAction(e -> Ui.attempt(this::createUser));
+        Button role = new Button("Change role...");
+        role.setOnAction(e -> Ui.attempt(this::changeRole));
+        Button toggle = new Button("Enable / disable");
+        toggle.setOnAction(e -> Ui.attempt(this::toggleActive));
+        Button reset = new Button("Reset password...");
+        reset.setOnAction(e -> Ui.attempt(this::resetPassword));
+
+        getChildren().addAll(Ui.heading("Users"), new HBox(8, create, role, toggle, reset), table, message);
+        reload();
+    }
+
+    private void reload() {
+        table.setItems(FXCollections.observableArrayList(services.auth().listUsers()));
+    }
+
+    private User selected() {
+        User user = table.getSelectionModel().getSelectedItem();
+        if (user == null) {
+            throw new BusinessException("Select a user first");
+        }
+        return user;
+    }
+
+    private void createUser() {
+        TextField username = new TextField();
+        PasswordField password = new PasswordField();
+        password.setPromptText("At least 8 characters");
+        ChoiceBox<Role> role = new ChoiceBox<>(FXCollections.observableArrayList(Role.values()));
+        role.setValue(Role.CASHIER);
+
+        var grid = Ui.grid();
+        grid.addRow(0, new Label("Username"), username);
+        grid.addRow(1, new Label("Temporary password"), password);
+        grid.addRow(2, new Label("Role"), role);
+
+        ButtonType create = new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("New user");
+        dialog.setHeaderText("The user must change this password at first login.");
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().getButtonTypes().addAll(create, ButtonType.CANCEL);
+        Optional<ButtonType> choice = dialog.showAndWait();
+        if (choice.isEmpty() || choice.get() != create) {
+            return;
+        }
+        services.auth().createUser(username.getText(), password.getText(), role.getValue());
+        message.setText("Created user " + username.getText().trim() + ".");
+        reload();
+    }
+
+    private void changeRole() {
+        User user = selected();
+        ChoiceDialog<Role> dialog = new ChoiceDialog<>(user.role(), Role.values());
+        dialog.setTitle("Change role");
+        dialog.setHeaderText("New role for " + user.username());
+        dialog.setContentText("Role:");
+        dialog.showAndWait().ifPresent(newRole -> {
+            services.auth().changeRole(user.id(), newRole);
+            message.setText(user.username() + " is now " + newRole + ".");
+            reload();
+        });
+    }
+
+    private void toggleActive() {
+        User user = selected();
+        boolean enable = !user.active();
+        String verb = enable ? "enable" : "disable";
+        if (!Ui.confirm("Really " + verb + " " + user.username() + "?")) {
+            return;
+        }
+        services.auth().setActive(user.id(), enable);
+        message.setText(user.username() + " " + (enable ? "enabled" : "disabled") + ".");
+        reload();
+    }
+
+    private void resetPassword() {
+        User user = selected();
+        PasswordField password = new PasswordField();
+        password.setPromptText("New temporary password");
+        var grid = Ui.grid();
+        grid.addRow(0, new Label("Temporary password"), password);
+
+        ButtonType reset = new ButtonType("Reset", ButtonBar.ButtonData.OK_DONE);
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Reset password");
+        dialog.setHeaderText("Set a temporary password for " + user.username()
+                + ". They must change it at next login.");
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().getButtonTypes().addAll(reset, ButtonType.CANCEL);
+        Optional<ButtonType> choice = dialog.showAndWait();
+        if (choice.isEmpty() || choice.get() != reset) {
+            return;
+        }
+        services.auth().resetPassword(user.id(), password.getText());
+        message.setText("Password reset for " + user.username() + ".");
+        reload();
+    }
+}
