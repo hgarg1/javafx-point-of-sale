@@ -15,30 +15,36 @@ import java.util.Optional;
 /** Shows a finished receipt, with an option to save it as a text file. */
 final class ReceiptDialog {
 
+    private static final ButtonType SAVE = new ButtonType("Save as .txt", ButtonBar.ButtonData.LEFT);
+
     private ReceiptDialog() {
     }
 
     static void show(String receiptText) {
-        ButtonType save = new ButtonType("Save as .txt", ButtonBar.ButtonData.LEFT);
-        TextArea text = new TextArea(receiptText);
-        text.setEditable(false);
-        text.setStyle("-fx-font-family: 'Consolas', monospace;");
-        text.setPrefRowCount(22);
-        text.setPrefColumnCount(44);
-
         while (true) {
-            Dialog<ButtonType> dialog = new Dialog<>();
-            dialog.setTitle("Receipt");
-            dialog.setHeaderText("Sale complete");
-            dialog.getDialogPane().setContent(text);
-            dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CLOSE);
-
-            Optional<ButtonType> choice = dialog.showAndWait();
-            if (choice.isEmpty() || choice.get() != save) {
+            Optional<ButtonType> choice = build(receiptText).showAndWait();
+            if (choice.isEmpty() || choice.get() != SAVE) {
                 return;
             }
             saveAsText(receiptText);
         }
+    }
+
+    /** The receipt dialog, built but not shown. The screenshot tests use it. */
+    static Dialog<ButtonType> build(String receiptText) {
+        TextArea text = new TextArea(receiptText);
+        text.setEditable(false);
+        text.getStyleClass().add("receipt");
+        text.setPrefRowCount(22);
+        text.setPrefColumnCount(44);
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Receipt");
+        dialog.setHeaderText("Sale complete");
+        dialog.getDialogPane().setContent(text);
+        dialog.getDialogPane().getButtonTypes().addAll(SAVE, ButtonType.CLOSE);
+        ThemeManager.apply(dialog.getDialogPane());
+        return dialog;
     }
 
     private static void saveAsText(String receiptText) {

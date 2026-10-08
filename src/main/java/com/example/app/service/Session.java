@@ -6,7 +6,12 @@ import com.example.app.error.AccessDeniedException;
 
 import java.util.Optional;
 
-/** The logged-in user for this terminal. Services check it before doing any work. */
+/**
+ * The logged-in user for this terminal. Services check it before doing any work.
+ *
+ * <p>A user whose password was set by an administrator must choose a new one before anything else. Until they do,
+ * {@link #requireUser()} refuses; only the password change itself uses {@link #requireUserForPasswordChange()}.
+ */
 public final class Session {
 
     private User current;
@@ -15,7 +20,17 @@ public final class Session {
         return Optional.ofNullable(current);
     }
 
+    /** The logged-in user, who has finished any forced password change. */
     public User requireUser() {
+        User user = requireUserForPasswordChange();
+        if (user.mustChangePassword()) {
+            throw new AccessDeniedException("Choose a new password before continuing");
+        }
+        return user;
+    }
+
+    /** The logged-in user, even if a forced password change is still pending. */
+    public User requireUserForPasswordChange() {
         if (current == null) {
             throw new AccessDeniedException("Please log in first");
         }

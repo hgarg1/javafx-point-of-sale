@@ -2,13 +2,14 @@ package com.example.app.repository;
 
 import com.example.app.db.Columns;
 import com.example.app.db.Database;
-import com.example.app.domain.PaymentMethod;
 import com.example.app.domain.Refund;
+import com.example.app.domain.RefundKind;
+import com.example.app.domain.TenderTotal;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,11 +25,12 @@ public final class RefundRepository {
         this.db = db;
     }
 
-    public long insertRefund(long saleId, long shiftId, long userId, long approvedBy, PaymentMethod method,
-                             String reason, long amountCents, Instant createdAt) {
-        return db.insert("INSERT INTO refunds (sale_id, shift_id, user_id, approved_by, method, reason, amount_cents, "
-                        + "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                saleId, shiftId, userId, approvedBy, method, reason, amountCents, createdAt);
+    /** Records a refund or void. {@code tender} is the code of the tender paid back to, {@code tenderName} its name then. */
+    public long insertRefund(long saleId, long shiftId, long userId, long approvedBy, String tender, String tenderName,
+                             String reason, long amountCents, Instant createdAt, String providerRef, RefundKind kind) {
+        return db.insert("INSERT INTO refunds (sale_id, shift_id, user_id, approved_by, method, tender_name, reason, "
+                        + "amount_cents, created_at, provider_ref, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                saleId, shiftId, userId, approvedBy, tender, tenderName, reason, amountCents, createdAt, providerRef, kind);
     }
 
     public void insertLine(long refundId, long saleLineId, int qty, long amountCents) {
@@ -42,19 +44,26 @@ public final class RefundRepository {
                 rs -> new RefundedSoFar(rs.getInt(1), rs.getLong(2)), saleLineId).orElseThrow();
     }
 
-    /** Refunded amount per payment method for all refunds in a shift. */
-    public Map<PaymentMethod, Long> amountByMethodForShift(long shiftId) {
-        Map<PaymentMethod, Long> totals = new EnumMap<>(PaymentMethod.class);
-        db.query("SELECT method, SUM(amount_cents) FROM refunds WHERE shift_id = ? GROUP BY method", rs -> {
-            totals.put(PaymentMethod.valueOf(rs.getString(1)), rs.getLong(2));
+    /** Refunded amount per tender code for one sale, refunds and voids together. Used to cap refunds at what each tender paid. */
+    public Map<String, Long> refundedByTenderForSale(long saleId) {
+        Map<String, Long> totals = new HashMap<>();
+        db.query("SELECT method, SUM(amount_cents) FROM refunds WHERE sale_id = ? GROUP BY method", rs -> {
+            totals.put(rs.getString(1), rs.getLong(2));
             return null;
-        }, shiftId);
+        }, saleId);
         return totals;
     }
 
+    /** Refunded or voided amount for all sales in a shift, grouped by tender and the name it had then. */
+    public List<TenderTotal> amountByTenderForShift(long shiftId, RefundKind kind) {
+        return db.query("SELECT method, tender_name, SUM(amount_cents) FROM refunds WHERE shift_id = ? AND kind = ? "
+                        + "GROUP BY method, tender_name ORDER BY method, tender_name",
+                rs -> new TenderTotal(rs.getString(1), rs.getString(2), rs.getLong(3)), shiftId, kind);
+    }
+
     public List<Refund> findBetween(Instant fromInclusive, Instant toExclusive) {
-        return db.query("SELECT id, sale_id, shift_id, user_id, approved_by, method, reason, amount_cents, created_at "
-                + "FROM refunds WHERE created_at >= ? AND created_at < ? ORDER BY created_at, id",
+        return db.query("SELECT id, sale_id, shift_id, user_id, approved_by, method, tender_name, reason, amount_cents, "
+                + "created_at, kind FROM refunds WHERE created_at >= ? AND created_at < ? ORDER BY created_at, id",
                 RefundRepository::map, fromInclusive, toExclusive);
     }
 
@@ -65,9 +74,11 @@ public final class RefundRepository {
                 rs.getLong("shift_id"),
                 rs.getLong("user_id"),
                 rs.getLong("approved_by"),
-                PaymentMethod.valueOf(rs.getString("method")),
+                rs.getString("method"),
+                rs.getString("tender_name"),
                 rs.getString("reason"),
                 rs.getLong("amount_cents"),
-                Columns.instant(rs, "created_at"));
+                Columns.instant(rs, "created_at"),
+                RefundKind.valueOf(rs.getString("kind")));
     }
 }

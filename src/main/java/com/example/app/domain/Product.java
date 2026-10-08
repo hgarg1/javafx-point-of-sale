@@ -16,13 +16,20 @@ public record Product(
         int taxRateBp,
         int stockQty,
         int reorderLevel,
-        boolean active) {
+        int reorderQty,
+        boolean active,
+        ProductKind kind) {
 
     public Money price() {
         return new Money(priceCents);
     }
 
+    public boolean isGiftCard() {
+        return kind == ProductKind.GIFT_CARD;
+    }
+
+    /** Gift cards are not stocked, so they are never low on stock. */
     public boolean isLowStock() {
-        return active && stockQty <= reorderLevel;
+        return active && kind == ProductKind.STOCK && stockQty <= reorderLevel;
     }
 }

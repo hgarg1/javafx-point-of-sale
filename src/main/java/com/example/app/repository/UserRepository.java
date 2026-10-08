@@ -6,6 +6,7 @@ import com.example.app.domain.User;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -60,6 +61,10 @@ public final class UserRepository {
 
     public void updateActive(long id, boolean active) {
         db.update("UPDATE users SET active = ? WHERE id = ?", active, id);
+    }
+
+    public void updateLastLogin(long id, Instant at) {
+        db.update("UPDATE users SET last_login_at = ? WHERE id = ?", at, id);
     }
 
     private static User map(ResultSet rs) throws SQLException {

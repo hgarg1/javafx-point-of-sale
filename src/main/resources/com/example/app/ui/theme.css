@@ -1,0 +1,475 @@
+/*
+ * Point of Sale theme. Every colour is a named token declared on .root, so a dark variant only has to redefine
+ * the tokens (see .root.dark below). JavaFX CSS has no media queries, so the application adds the "dark" style class
+ * to the root when the system or the user's setting asks for dark mode.
+ */
+
+.root {
+    -color-surface: #ffffff;
+    -color-surface-alt: #f4f6f9;
+    -color-border: #d5dbe4;
+    -color-text: #1c2430;
+    -color-text-muted: #5a6474;
+    -color-accent: #1d6fe0;
+    -color-accent-text: #ffffff;
+    -color-focus: #1d6fe0;
+    -color-selected: #dbe9fd;
+    -color-success: #17794a;
+    -color-success-text: #ffffff;
+    -color-warning: #8a5a00;
+    -color-danger: #b42318;
+    -color-danger-text: #ffffff;
+    /* Data marks: the reference palette's first categorical slot, validated against the card surfaces. */
+    -color-series-1: #2a78d6;
+    -color-grid: #e4e7ed;
+
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: -color-surface-alt;
+    -fx-text-fill: -color-text;
+
+    /* Modena reads these; keeping them in step with the tokens makes controls match. */
+    -fx-accent: -color-accent;
+    -fx-focus-color: -color-focus;
+    -fx-faint-focus-color: transparent;
+    -fx-control-inner-background: -color-surface;
+    -fx-selection-bar: -color-accent;
+    -fx-text-base-color: -color-text;
+    -fx-prompt-text-fill: -color-text-muted;
+}
+
+.root.dark {
+    -color-surface: #1a1f28;
+    -color-surface-alt: #222935;
+    -color-border: #3a4354;
+    -color-text: #e7ebf2;
+    -color-text-muted: #a4adbd;
+    -color-accent: #5b9dff;
+    -color-accent-text: #0b1322;
+    -color-focus: #5b9dff;
+    -color-selected: #24395a;
+    -color-success: #3fb97a;
+    -color-success-text: #08170f;
+    -color-warning: #e0b050;
+    -color-danger: #ff8a80;
+    -color-danger-text: #1f0b09;
+    -color-series-1: #3987e5;
+    -color-grid: #2c3340;
+}
+
+/* ---- Charts (see the dataviz guidance: one series, hairline grid, text in text colours) ---- */
+
+.default-color0.chart-bar {
+    -fx-bar-fill: -color-series-1;
+    -fx-background-radius: 4 4 0 0;
+}
+
+.chart-vertical-grid-lines,
+.chart-horizontal-grid-lines {
+    -fx-stroke: -color-grid;
+    -fx-stroke-width: 1;
+}
+
+.chart-plot-background {
+    -fx-background-color: transparent;
+}
+
+.axis {
+    -fx-tick-label-fill: -color-text-muted;
+    -fx-tick-length: 4;
+}
+
+.chart-title {
+    -fx-text-fill: -color-text;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.hero-value {
+    -fx-font-size: 48px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-text;
+}
+
+.stat-value {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+}
+
+.stat-label {
+    -fx-text-fill: -color-text-muted;
+    -fx-font-size: 12px;
+}
+
+/* ---- Typography ---- */
+
+.title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+}
+
+.section-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+}
+
+.muted {
+    -fx-text-fill: -color-text-muted;
+    -fx-wrap-text: true;
+}
+
+.error-text {
+    -fx-text-fill: -color-danger;
+    -fx-wrap-text: true;
+}
+
+.bold {
+    -fx-font-weight: bold;
+}
+
+.total-amount {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.receipt {
+    -fx-font-family: "Consolas", "Courier New", monospace;
+}
+
+/* ---- Buttons ---- */
+
+.button {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 6;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 6;
+    -fx-border-width: 1;
+    -fx-padding: 6 14;
+    -fx-text-fill: -color-text;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: -color-surface-alt;
+    -fx-border-color: -color-text-muted;
+}
+
+.button:pressed {
+    -fx-background-color: -color-border;
+}
+
+.button:focused {
+    -fx-border-color: -color-focus;
+    -fx-border-width: 2;
+}
+
+.button:disabled {
+    -fx-opacity: 0.5;
+}
+
+.button.primary,
+.button:default {
+    -fx-background-color: -color-accent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -color-accent-text;
+}
+
+.button.primary:hover,
+.button:default:hover {
+    -fx-background-color: -color-accent;
+    -fx-opacity: 0.92;
+}
+
+.button.danger {
+    -fx-background-color: -color-danger;
+    -fx-border-color: transparent;
+    -fx-text-fill: -color-danger-text;
+}
+
+.button.big {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-padding: 12 18;
+}
+
+/* Navigation buttons in the sidebar. */
+.nav-button {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-background-radius: 8;
+    -fx-alignment: center-left;
+    -fx-padding: 9 12;
+    -fx-font-size: 14px;
+    -fx-min-width: 176;
+    -fx-text-fill: -color-text;
+}
+
+.nav-button:hover {
+    -fx-background-color: -color-border;
+}
+
+.nav-button.selected {
+    -fx-background-color: -color-selected;
+    -fx-font-weight: bold;
+}
+
+/* ---- Text inputs and choices ---- */
+
+.text-field,
+.password-field,
+.combo-box-base,
+.choice-box,
+.date-picker,
+.text-area {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 6;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 6;
+    -fx-text-fill: -color-text;
+}
+
+.text-field:focused,
+.password-field:focused,
+.combo-box-base:focused,
+.choice-box:focused {
+    -fx-border-color: -color-focus;
+    -fx-border-width: 2;
+}
+
+.text-field.invalid {
+    -fx-border-color: -color-danger;
+}
+
+.text-field .content,
+.password-field .content,
+.combo-box-base .content,
+.choice-box .label {
+    -fx-background-color: -color-surface;
+}
+
+.label {
+    -fx-text-fill: -color-text;
+}
+
+.check-box {
+    -fx-text-fill: -color-text;
+}
+
+/* ---- Tables ---- */
+
+.table-view {
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: -color-surface-alt;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: -color-text;
+    -fx-font-weight: bold;
+}
+
+.table-view .column-header,
+.table-view .filler {
+    -fx-background-color: -color-surface-alt;
+    -fx-border-color: -color-border;
+}
+
+.table-row-cell {
+    -fx-background-color: -color-surface;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: -color-surface-alt;
+}
+
+.table-row-cell:selected,
+.table-row-cell:odd:selected {
+    -fx-background-color: -color-selected;
+}
+
+.table-row-cell .table-cell {
+    -fx-text-fill: -color-text;
+    -fx-border-color: transparent;
+}
+
+.table-row-cell:selected .table-cell {
+    -fx-text-fill: -color-text;
+}
+
+.table-cell:focused {
+    -fx-background-color: -color-selected;
+}
+
+.table-cell .text-field {
+    -fx-padding: 2 6;
+}
+
+/* ---- Panels ---- */
+
+.sidebar {
+    -fx-background-color: -color-surface-alt;
+    -fx-border-color: -color-border;
+    -fx-border-width: 0 1 0 0;
+    -fx-padding: 12 8;
+}
+
+.header {
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 8 14;
+}
+
+.card {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 10;
+    -fx-padding: 14;
+}
+
+.totals-panel {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 10;
+    -fx-padding: 14;
+}
+
+.pill {
+    -fx-background-radius: 12;
+    -fx-padding: 3 10;
+    -fx-font-size: 12px;
+    -fx-background-color: -color-surface-alt;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 12;
+}
+
+.pill-open {
+    -fx-background-color: -color-success;
+    -fx-border-color: transparent;
+    -fx-text-fill: -color-success-text;
+}
+
+/* ---- Icons (Lucide, ISC licence; see THIRD-PARTY-NOTICES.md) ---- */
+
+.icon {
+    -fx-fill: transparent;
+    -fx-stroke: -color-text;
+    -fx-stroke-width: 2;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.nav-button .icon {
+    -fx-stroke: -color-text-muted;
+}
+
+.nav-button.selected .icon {
+    -fx-stroke: -color-accent;
+}
+
+.button.primary .icon,
+.button:default .icon {
+    -fx-stroke: -color-accent-text;
+}
+
+/* ---- Notices ---- */
+
+.toast {
+    -fx-background-color: -color-text;
+    -fx-background-radius: 8;
+    -fx-padding: 10 16;
+    -fx-font-size: 13px;
+    -fx-text-fill: -color-surface;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 10, 0, 0, 2);
+}
+
+.lock-overlay {
+    -fx-background-color: rgba(10, 14, 20, 0.72);
+}
+
+.lock-card {
+    -fx-background-color: -color-surface;
+    -fx-background-radius: 12;
+    -fx-padding: 24;
+    -fx-spacing: 10;
+}
+
+/* ---- Tabs. Modena's tab strip is light grey whatever the theme, so the labels have to follow the theme too. ---- */
+
+.tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: -color-surface-alt;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: -color-surface-alt;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -color-surface;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab > .tab-label {
+    -fx-text-fill: -color-text;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected > .tab-label {
+    -fx-font-weight: bold;
+}
+
+/* Dialog headers. Modena paints the header strip light grey whatever the theme, so the header text vanished in dark mode. */
+
+.dialog-pane > .header-panel {
+    -fx-background-color: -color-surface-alt;
+}
+
+.dialog-pane > .header-panel > .label {
+    -fx-text-fill: -color-text;
+}
+
+/* Prompt text in fields. Modena sets its own colour on text inputs, which would hide the muted token. */
+.text-input {
+    -fx-prompt-text-fill: -color-text-muted;
+}
+
+/* ---- Density (set on the root by ThemeManager) ---- */
+
+.compact .button {
+    -fx-padding: 3 10;
+}
+
+.compact .text-field,
+.compact .password-field,
+.compact .combo-box-base {
+    -fx-padding: 3 6;
+}
+
+.touch .button {
+    -fx-min-height: 48;
+    -fx-font-size: 15px;
+    -fx-padding: 10 18;
+}
+
+.touch .nav-button {
+    -fx-min-height: 48;
+}
+
+.touch .text-field,
+.touch .password-field,
+.touch .combo-box-base {
+    -fx-min-height: 44;
+    -fx-font-size: 15px;
+}
+
+/* The Settings page scrolls on a short window. Only that page takes the page colour; other scroll panes, such as the one
+   inside a text area, keep Modena's look. */
+.page-scroll,
+.page-scroll > .viewport {
+    -fx-background-color: -color-surface-alt;
+}

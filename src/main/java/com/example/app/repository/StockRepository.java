@@ -17,15 +17,15 @@ public final class StockRepository {
     }
 
     public long insertMovement(long productId, MovementType type, int qtyDelta, String reason,
-                               long userId, Long refSaleId, Instant createdAt) {
+                               long userId, Long refSaleId, Long refReceiptId, Instant createdAt) {
         return db.insert("INSERT INTO stock_movements (product_id, movement_type, qty_delta, reason, user_id, "
-                        + "ref_sale_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                productId, type, qtyDelta, reason, userId, refSaleId, createdAt);
+                        + "ref_sale_id, ref_receipt_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                productId, type, qtyDelta, reason, userId, refSaleId, refReceiptId, createdAt);
     }
 
     public List<StockMovement> findByProduct(long productId) {
-        return db.query("SELECT id, product_id, movement_type, qty_delta, reason, user_id, ref_sale_id, created_at "
-                + "FROM stock_movements WHERE product_id = ? ORDER BY created_at DESC, id DESC", rs ->
+        return db.query("SELECT id, product_id, movement_type, qty_delta, reason, user_id, ref_sale_id, created_at, "
+                + "ref_receipt_id FROM stock_movements WHERE product_id = ? ORDER BY created_at DESC, id DESC", rs ->
                 new StockMovement(
                         rs.getLong("id"),
                         rs.getLong("product_id"),
@@ -34,7 +34,8 @@ public final class StockRepository {
                         rs.getString("reason"),
                         rs.getLong("user_id"),
                         Columns.longOrNull(rs, "ref_sale_id"),
-                        Columns.instant(rs, "created_at")), productId);
+                        Columns.instant(rs, "created_at"),
+                        Columns.longOrNull(rs, "ref_receipt_id")), productId);
     }
 
     /** Sum of all movement deltas for a product. Should always equal products.stock_qty. */

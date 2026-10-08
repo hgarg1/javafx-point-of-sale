@@ -21,7 +21,13 @@ final class StockLedger {
     }
 
     void apply(long productId, MovementType type, int qtyDelta, String reason, long userId, Long refSaleId) {
-        movements.insertMovement(productId, type, qtyDelta, reason, userId, refSaleId, Instant.now());
+        apply(productId, type, qtyDelta, reason, userId, refSaleId, null);
+    }
+
+    /** A change that comes from a goods receipt, so the movement can be traced back to the delivery. */
+    void apply(long productId, MovementType type, int qtyDelta, String reason, long userId, Long refSaleId,
+               Long refReceiptId) {
+        movements.insertMovement(productId, type, qtyDelta, reason, userId, refSaleId, refReceiptId, Instant.now());
         products.adjustStock(productId, qtyDelta);
     }
 }

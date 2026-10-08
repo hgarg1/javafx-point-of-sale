@@ -8,8 +8,10 @@ public record Refund(
         long shiftId,
         long userId,
         long approvedBy,
-        PaymentMethod method,
+        String tender,
+        String tenderName,
         String reason,
         long amountCents,
-        Instant createdAt) {
+        Instant createdAt,
+        RefundKind kind) {
 }

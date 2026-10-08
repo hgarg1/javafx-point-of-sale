@@ -10,27 +10,33 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
-import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
-import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /** Stock on hand, receipts, waste, adjustments and stock take. Every change is a movement row. */
-final class StockView extends BorderPane {
+final class StockView extends BorderPane implements Screen {
+
+    /** A row in the stock take: the product and the count typed for it. */
+    private static final class CountRow {
+        final Product product;
+        final StringProperty counted;
+
+        CountRow(Product product) {
+            this.product = product;
+            this.counted = new SimpleStringProperty(String.valueOf(product.stockQty()));
+        }
+    }
 
     private final AppServices services;
     private final TableView<Product> products = Ui.table();
@@ -38,53 +44,67 @@ final class StockView extends BorderPane {
     private final CheckBox lowStockOnly = new CheckBox("Show low stock only");
     private final Label message = Ui.muted("");
     private final Label historyTitle = Ui.heading("Movements");
+    private final Map<Long, String> namesByUserId = new HashMap<>();
 
     StockView(AppServices services) {
         this.services = services;
 
         products.getColumns().addAll(
-                Ui.<Product>column("SKU", 90, Product::sku),
-                Ui.<Product>column("Name", 220, Product::name),
-                Ui.<Product>column("On hand", 80, p -> String.valueOf(p.stockQty())),
-                Ui.<Product>column("Reorder at", 90, p -> String.valueOf(p.reorderLevel())),
-                Ui.<Product>column("Status", 80, p -> p.isLowStock() ? "LOW" : "OK"));
+                Columns.text("SKU", 90, Product::sku),
+                Columns.text("Name", 220, Product::name),
+                Columns.whole("On hand", 80, Product::stockQty),
+                Columns.whole("Reorder at", 90, Product::reorderLevel),
+                Columns.text("Status", 80, p -> p.isLowStock() ? "LOW" : "OK"));
         products.getSelectionModel().selectedItemProperty().addListener((obs, old, now) -> loadHistory(now));
         VBox.setVgrow(products, Priority.ALWAYS);
 
         history.getColumns().addAll(
-                Ui.<StockMovement>column("When", 130, m -> Ui.dateTime(m.createdAt())),
-                Ui.<StockMovement>column("Type", 110, m -> m.type().name()),
-                Ui.<StockMovement>column("Qty", 60, m -> String.valueOf(m.qtyDelta())),
-                Ui.<StockMovement>column("Reason", 220, m -> m.reason() == null ? "" : m.reason()));
+                Columns.dateTime("When", 130, StockMovement::createdAt),
+                Columns.text("Type", 110, m -> m.type().name()),
+                Columns.whole("Qty", 60, StockMovement::qtyDelta),
+                Columns.text("Reason", 200, m -> m.reason() == null ? "" : m.reason()),
+                Columns.text("By", 90, m -> namesByUserId.getOrDefault(m.userId(), "")));
 
         Button receive = new Button("Receive...");
-        receive.setOnAction(e -> move(MovementType.RECEIVE));
+        receive.setOnAction(e -> Ui.attempt(() -> move(MovementType.RECEIVE)));
         Button adjust = new Button("Adjust...");
-        adjust.setOnAction(e -> move(MovementType.ADJUST));
+        adjust.setOnAction(e -> Ui.attempt(() -> move(MovementType.ADJUST)));
         Button waste = new Button("Waste...");
-        waste.setOnAction(e -> move(MovementType.WASTE));
+        waste.setOnAction(e -> Ui.attempt(() -> move(MovementType.WASTE)));
         Button stockTake = new Button("Stock take...");
         stockTake.setOnAction(e -> Ui.attempt(this::stockTake));
-        lowStockOnly.setOnAction(e -> reload());
+        lowStockOnly.setOnAction(e -> Ui.attempt(this::reload));
         HBox actions = new HBox(8, receive, adjust, waste, stockTake, lowStockOnly);
 
         VBox top = new VBox(8, Ui.heading("Stock"), actions, products, message);
         top.setPadding(new Insets(0, 0, 12, 0));
-        VBox.setVgrow(products, Priority.ALWAYS);
         VBox bottom = new VBox(6, historyTitle, history);
         VBox.setVgrow(history, Priority.ALWAYS);
 
         setTop(top);
         setCenter(bottom);
         setPadding(new Insets(12));
+        onShow();
+    }
+
+    @Override
+    public void onShow() {
         reload();
     }
 
+    /** Reloads the list and keeps the product that was selected, so an action does not clear the selection. */
     private void reload() {
+        Long selectedId = selectedProduct().map(Product::id).orElse(null);
         List<Product> items = lowStockOnly.isSelected()
                 ? services.inventory().listLowStock()
                 : services.inventory().listProducts();
         products.setItems(FXCollections.observableArrayList(items));
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).id() == (selectedId == null ? -1 : selectedId)) {
+                products.getSelectionModel().select(i);
+                break;
+            }
+        }
     }
 
     private void loadHistory(Product product) {
@@ -94,42 +114,20 @@ final class StockView extends BorderPane {
             return;
         }
         historyTitle.setText("Movements for " + product.name());
-        history.setItems(FXCollections.observableArrayList(services.inventory().movementsFor(product.id())));
+        List<StockMovement> movements = services.inventory().movementsFor(product.id());
+        namesByUserId.clear();
+        for (StockMovement m : movements) {
+            namesByUserId.computeIfAbsent(m.userId(), services.auth()::usernameOf);
+        }
+        history.setItems(FXCollections.observableArrayList(movements));
     }
 
-    private Product selectedProduct() {
-        Product selected = products.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            throw new BusinessException("Select a product first");
-        }
-        return selected;
+    private java.util.Optional<Product> selectedProduct() {
+        return java.util.Optional.ofNullable(products.getSelectionModel().getSelectedItem());
     }
 
     private void move(MovementType type) {
-        Ui.attempt(() -> {
-            Product product = selectedProduct();
-            Optional<MovementInput> input = askMovement(type, product.name());
-            if (input.isEmpty()) {
-                return;
-            }
-            services.inventory().recordMovement(product.id(), type,
-                    Ui.parseWhole(input.get().qty(), "Quantity"), input.get().reason());
-            message.setText(describe(type, product.name()));
-            reload();
-            loadHistory(product);
-        });
-    }
-
-    private static String describe(MovementType type, String name) {
-        return switch (type) {
-            case RECEIVE -> "Received stock for " + name + ".";
-            case ADJUST -> "Adjusted stock for " + name + ".";
-            case WASTE -> "Recorded waste for " + name + ".";
-            default -> "Saved.";
-        };
-    }
-
-    private static Optional<MovementInput> askMovement(MovementType type, String productName) {
+        Product product = selectedProduct().orElseThrow(() -> new BusinessException("Select a product first"));
         boolean needsReason = type != MovementType.RECEIVE;
         TextField qty = new TextField();
         qty.setPromptText(type == MovementType.ADJUST ? "Use -3 to remove 3, 3 to add 3" : "Quantity");
@@ -140,18 +138,23 @@ final class StockView extends BorderPane {
         grid.addRow(0, new Label("Quantity"), qty);
         grid.addRow(1, new Label(needsReason ? "Reason" : "Reason (optional)"), reason);
 
-        ButtonType save = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle(titleFor(type));
-        dialog.setHeaderText(titleFor(type) + ": " + productName);
-        dialog.getDialogPane().setContent(grid);
-        dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
-
-        Optional<ButtonType> choice = dialog.showAndWait();
-        if (choice.isEmpty() || choice.get() != save) {
-            return Optional.empty();
+        boolean saved = FormDialog.run(null, titleFor(type), titleFor(type) + ": " + product.name(), grid, "Save",
+                () -> services.inventory().recordMovement(product.id(), type,
+                        Ui.parseWhole(qty.getText(), "Quantity"), reason.getText()));
+        if (saved) {
+            message.setText(describe(type, product.name()));
+            reload();
+            loadHistory(selectedProduct().orElse(null));
         }
-        return Optional.of(new MovementInput(qty.getText(), reason.getText()));
+    }
+
+    private static String describe(MovementType type, String name) {
+        return switch (type) {
+            case RECEIVE -> "Received stock for " + name + ".";
+            case ADJUST -> "Adjusted stock for " + name + ".";
+            case WASTE -> "Recorded waste for " + name + ".";
+            default -> "Saved.";
+        };
     }
 
     private static String titleFor(MovementType type) {
@@ -169,53 +172,28 @@ final class StockView extends BorderPane {
             throw new BusinessException("There are no products to count");
         }
         TableView<CountRow> table = Ui.table();
-        table.setEditable(true);
-        table.setPrefSize(560, 420);
         table.setItems(FXCollections.observableArrayList(all.stream().map(CountRow::new).toList()));
-
-        TableColumn<CountRow, String> counted = new TableColumn<>("Counted");
-        counted.setPrefWidth(110);
-        counted.setEditable(true);
-        counted.setCellValueFactory(cell -> cell.getValue().counted);
-        counted.setCellFactory(TextFieldTableCell.forTableColumn());
-        counted.setOnEditCommit(e -> e.getRowValue().counted.set(e.getNewValue()));
         table.getColumns().addAll(
-                Ui.<CountRow>column("SKU", 90, r -> r.product.sku()),
-                Ui.<CountRow>column("Name", 240, r -> r.product.name()),
-                Ui.<CountRow>column("System", 80, r -> String.valueOf(r.product.stockQty())),
-                counted);
+                Columns.text("SKU", 90, r -> r.product.sku()),
+                Columns.text("Name", 240, r -> r.product.name()),
+                Columns.whole("System", 80, r -> r.product.stockQty()),
+                Columns.input("Counted", 110, r -> r.counted));
+        table.setPrefSize(600, 420);
 
-        ButtonType apply = new ButtonType("Apply counts", ButtonBar.ButtonData.OK_DONE);
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle("Stock take");
-        dialog.setHeaderText("Type the counted quantity for each product. Only changed counts are adjusted.");
-        dialog.getDialogPane().setContent(table);
-        dialog.getDialogPane().getButtonTypes().addAll(apply, ButtonType.CANCEL);
-
-        Optional<ButtonType> choice = dialog.showAndWait();
-        if (choice.isEmpty() || choice.get() != apply) {
-            return;
-        }
-        Map<Long, Integer> counts = new LinkedHashMap<>();
-        for (CountRow row : table.getItems()) {
-            counts.put(row.product.id(), Ui.parseWhole(row.counted.get(), "Count for " + row.product.name()));
-        }
-        int adjusted = services.inventory().stockTake(counts);
-        message.setText("Stock take complete: " + adjusted + " product(s) adjusted.");
-        reload();
-    }
-
-    private record MovementInput(String qty, String reason) {
-    }
-
-    /** A row in the stock take grid. The counted value is editable. */
-    private static final class CountRow {
-        final Product product;
-        final StringProperty counted;
-
-        CountRow(Product product) {
-            this.product = product;
-            this.counted = new SimpleStringProperty(String.valueOf(product.stockQty()));
+        boolean applied = FormDialog.run(null, "Stock take",
+                "Type the counted quantity for each product. Only changed counts are adjusted.", table,
+                "Apply counts", () -> {
+                    Map<Long, Integer> counts = new LinkedHashMap<>();
+                    for (CountRow row : table.getItems()) {
+                        counts.put(row.product.id(),
+                                Ui.parseWhole(row.counted.get(), "Count for " + row.product.name()));
+                    }
+                    int adjusted = services.inventory().stockTake(counts);
+                    message.setText("Stock take complete: " + adjusted + " product(s) adjusted.");
+                });
+        if (applied) {
+            reload();
+            loadHistory(selectedProduct().orElse(null));
         }
     }
 }

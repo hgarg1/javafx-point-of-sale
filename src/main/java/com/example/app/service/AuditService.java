@@ -1,9 +1,9 @@
 package com.example.app.service;
 
+import com.example.app.domain.AuditEntry;
 import com.example.app.domain.Role;
 import com.example.app.domain.User;
 import com.example.app.repository.AuditRepository;
-import com.example.app.repository.AuditRepository.AuditEntry;
 
 import java.time.Instant;
 import java.util.List;

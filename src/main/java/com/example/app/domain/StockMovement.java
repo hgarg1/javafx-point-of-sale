@@ -11,5 +11,6 @@ public record StockMovement(
         String reason,
         long userId,
         Long refSaleId,
-        Instant createdAt) {
+        Instant createdAt,
+        Long refReceiptId) {
 }

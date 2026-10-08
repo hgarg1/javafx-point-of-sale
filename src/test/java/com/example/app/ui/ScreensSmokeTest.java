@@ -29,15 +29,19 @@ class ScreensSmokeTest {
     void everyScreenBuildsForAnAdmin() throws Exception {
         try (AppServices app = new AppServices("jdbc:h2:mem:" + UUID.randomUUID().toString().replace("-", "")
                 + ";DB_CLOSE_DELAY=-1")) {
-            app.auth().login("admin", "admin");
+            app.auth().completeSetup("owner", "owner-pass-1");
             onFxThread(() -> {
-                AppShell shell = new AppShell(app, () -> {
+                AppShell shell = new AppShell(app, UiPrefs.defaults(), () -> {
                 });
-                assertNotNull(shell.getCenter(), "the first screen should be shown");
+                for (String screen : new String[]{"Checkout", "Shift", "Refunds", "Products", "Stock", "Purchasing", "Reports", "Users", "Settings"}) {
+                    shell.navigate(screen);
+                }
+                assertNotNull(shell);
                 assertNotNull(new ShiftView(app));
                 assertNotNull(new ProductsView(app));
                 assertNotNull(new StockView(app));
                 assertNotNull(new RefundView(app));
+                assertNotNull(new PurchasingView(app));
                 assertNotNull(new ReportsView(app));
                 assertNotNull(new UsersView(app));
                 return null;

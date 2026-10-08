@@ -35,21 +35,14 @@ public record Money(long cents) {
                 .longValueExact();
     }
 
-    /** Parses user input such as "12.5" or "$12.50" into cents. Throws IllegalArgumentException if invalid. */
+    /** Reads an amount typed in the store's locale and currency. Throws IllegalArgumentException if invalid. */
     public static long parseCents(String text) {
-        String cleaned = text.trim().replace("$", "").replace(",", "");
-        try {
-            return new BigDecimal(cleaned)
-                    .movePointRight(2)
-                    .setScale(0, RoundingMode.HALF_UP)
-                    .longValueExact();
-        } catch (ArithmeticException | NumberFormatException e) {
-            throw new IllegalArgumentException("Not a valid amount: " + text, e);
-        }
+        return MoneyFormat.parseCents(text);
     }
 
+    /** The amount in the store's currency and locale, e.g. "$12.50". */
     public String format() {
-        return (cents < 0 ? "-$" : "$") + toPlainAmount(Math.abs(cents));
+        return MoneyFormat.format(cents);
     }
 
     /** Decimal with no currency symbol, e.g. "12.50". Used for CSV exports. */

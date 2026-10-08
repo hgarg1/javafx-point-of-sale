@@ -1,5 +1,7 @@
 package com.example.app.db;
 
+import com.example.app.error.BusinessException;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -15,7 +17,13 @@ import java.util.Optional;
 
 /**
  * Owns the single JDBC connection and the transaction boundary.
- * The app is single-terminal and runs its database work on the JavaFX thread, so one connection is enough.
+ *
+ * <p><b>Threading rule:</b> every call on this class must happen on the JavaFX application thread. The connection
+ * is not thread-safe and the transaction depth counter is not synchronised. Background work (exports, backups)
+ * must not touch the database from another thread; at this data size the work is short enough to run inline.
+ *
+ * <p>Constraint violations (SQLSTATE class 23) are reported to the user as {@link BusinessException} with a plain
+ * message. Everything else is a {@link DataAccessException}, whose message includes the SQL for the log only.
  */
 public final class Database implements AutoCloseable {
 
@@ -26,8 +34,11 @@ public final class Database implements AutoCloseable {
 
     @FunctionalInterface
     public interface RowMapper<T> {
-        T map(java.sql.ResultSet rs) throws SQLException;
+        T map(ResultSet rs) throws SQLException;
     }
+
+    private static final String CONFLICT_MESSAGE =
+            "That change conflicts with existing data. Check for a duplicate name or code.";
 
     private final Connection connection;
     private int transactionDepth;
@@ -36,31 +47,31 @@ public final class Database implements AutoCloseable {
         try {
             this.connection = DriverManager.getConnection(jdbcUrl, "sa", "");
         } catch (SQLException e) {
-            throw new DataAccessException("Cannot open database " + jdbcUrl, e);
+            throw translate(e, "open database");
         }
     }
 
     /**
      * Runs the work atomically. Nested calls join the outer transaction, so a service can call another service
-     * safely. Any exception (including business rule violations) rolls everything back.
+     * safely. Any exception, including business rule violations, rolls everything back.
      */
     public <T> T inTransaction(SqlWork<T> work) {
         if (transactionDepth > 0) {
-            return unchecked(work);
+            return unchecked(work, "transaction step");
         }
         try {
             connection.setAutoCommit(false);
         } catch (SQLException e) {
-            throw new DataAccessException("Cannot begin transaction", e);
+            throw translate(e, "begin transaction");
         }
         transactionDepth++;
         try {
-            T result = unchecked(work);
+            T result = unchecked(work, "transaction step");
             connection.commit();
             return result;
         } catch (SQLException e) {
             rollbackQuietly();
-            throw new DataAccessException("Cannot commit transaction", e);
+            throw translate(e, "commit transaction");
         } catch (RuntimeException e) {
             rollbackQuietly();
             throw e;
@@ -88,7 +99,7 @@ public final class Database implements AutoCloseable {
                 return rows;
             }
         } catch (SQLException e) {
-            throw new DataAccessException("Query failed: " + sql, e);
+            throw translate(e, sql);
         }
     }
 
@@ -103,7 +114,7 @@ public final class Database implements AutoCloseable {
             bind(ps, params);
             return ps.executeUpdate();
         } catch (SQLException e) {
-            throw new DataAccessException("Update failed: " + sql, e);
+            throw translate(e, sql);
         }
     }
 
@@ -114,21 +125,21 @@ public final class Database implements AutoCloseable {
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (!keys.next()) {
-                    throw new DataAccessException("No generated key for: " + sql, null);
+                    throw new DataAccessException("No generated key was returned for: " + sql, null);
                 }
                 return keys.getLong(1);
             }
         } catch (SQLException e) {
-            throw new DataAccessException("Insert failed: " + sql, e);
+            throw translate(e, sql);
         }
     }
 
-    /** Runs raw SQL (DDL, scripts) on the connection. */
+    /** Runs raw SQL (DDL, scripts, BACKUP) on the connection. */
     public void execute(String sql) {
         try (Statement st = connection.createStatement()) {
             st.execute(sql);
         } catch (SQLException e) {
-            throw new DataAccessException("Statement failed: " + sql, e);
+            throw translate(e, sql);
         }
     }
 
@@ -137,15 +148,27 @@ public final class Database implements AutoCloseable {
         try {
             connection.close();
         } catch (SQLException e) {
-            throw new DataAccessException("Cannot close database", e);
+            throw translate(e, "close database");
         }
     }
 
-    private <T> T unchecked(SqlWork<T> work) {
+    /**
+     * Converts a JDBC failure into an exception the rest of the app can handle. A constraint violation becomes a
+     * user-facing {@link BusinessException}; anything else keeps the SQL for the log and the original cause.
+     */
+    static RuntimeException translate(SQLException e, String context) {
+        String state = e.getSQLState();
+        if (state != null && state.startsWith("23")) {
+            return new BusinessException(CONFLICT_MESSAGE);
+        }
+        return new DataAccessException("Database error during: " + context, e);
+    }
+
+    private <T> T unchecked(SqlWork<T> work, String context) {
         try {
             return work.apply(connection);
         } catch (SQLException e) {
-            throw new DataAccessException("SQL error: " + e.getMessage(), e);
+            throw translate(e, context);
         }
     }
 
