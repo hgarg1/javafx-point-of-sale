@@ -68,6 +68,9 @@ class ScreenshotTest {
                             AppShell second = new AppShell(app, UiPrefs.defaults(), () -> {
                             });
                             second.navigate(screen);
+                            ThemeManager.newScene(second, WIDTH, HEIGHT);
+                            second.applyCss();
+                            second.layout();
                             ((TabPane) second.lookup(".tab-pane")).getSelectionModel().select(1);
                             render(second, SECOND_TABS.get(screen) + "-" + suffix);
                         }
@@ -82,9 +85,54 @@ class ScreenshotTest {
         render(root, name, WIDTH, HEIGHT);
     }
 
+    @Test
+    void renderSmallAndNormalWindowsIncludingTouchAndStockErrors() throws Exception {
+        try (AppServices app = new AppServices("jdbc:h2:mem:" + UUID.randomUUID()
+                + ";DB_CLOSE_DELAY=-1", new PasswordHasher(1000))) {
+            DemoData.seed(app);
+            app.auth().login("owner", "owner-pass-1");
+            app.inventory().createProduct(new com.example.app.domain.ProductDraft("LONG", null,
+                    "Extra long product name for checking cart and product form layout at the smallest window size",
+                    null, null, 500, 0, 0, 0, true), 0);
+            onFxThread(() -> {
+                try {
+                    for (ThemeManager.Mode mode : new ThemeManager.Mode[]{ThemeManager.Mode.LIGHT, ThemeManager.Mode.DARK}) {
+                        ThemeManager.setMode(mode);
+                        for (ThemeManager.Density density : new ThemeManager.Density[]{ThemeManager.Density.COMFORTABLE,
+                                ThemeManager.Density.TOUCH}) {
+                            ThemeManager.setDensity(density);
+                            for (int width : new int[]{1024, 1150}) {
+                                int height = width == 1024 ? 680 : 740;
+                                String suffix = mode.name().toLowerCase() + "-" + density.name().toLowerCase() + "-" + width;
+                                AppShell shell = new AppShell(app, UiPrefs.defaults(), () -> {});
+                                render(shell, "checkout-small-" + suffix, width, height);
+                                shell = new AppShell(app, UiPrefs.defaults(), () -> {});
+                                shell.navigate("Reports");
+                                render(shell, "reports-small-" + suffix, width, height);
+                                CheckoutView checkout = new CheckoutView(app, () -> {});
+                                java.lang.reflect.Field field = CheckoutView.class.getDeclaredField("scan");
+                                field.setAccessible(true);
+                                var scan = (javafx.scene.control.TextField) field.get(checkout);
+                                scan.setText("LONG");
+                                javafx.event.Event.fireEvent(scan, new javafx.event.ActionEvent());
+                                render(checkout, "checkout-error-" + suffix, width - 192, height - 52);
+                            }
+                        }
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                } finally {
+                    ThemeManager.setDensity(ThemeManager.Density.COMFORTABLE);
+                    ThemeManager.setMode(ThemeManager.Mode.SYSTEM);
+                }
+                return null;
+            });
+        }
+    }
+
     private static void render(Parent root, String name, double width, double height) {
         try {
-            var scene = ThemeManager.newScene(root, width, height);
+            var scene = root.getScene() == null ? ThemeManager.newScene(root, width, height) : root.getScene();
             root.applyCss();
             root.layout();
             WritableImage image = scene.snapshot(null);

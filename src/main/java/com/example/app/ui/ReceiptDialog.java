@@ -40,6 +40,7 @@ final class ReceiptDialog {
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("Receipt");
+        dialog.setResizable(true);
         dialog.setHeaderText("Sale complete");
         dialog.getDialogPane().setContent(text);
         dialog.getDialogPane().getButtonTypes().addAll(SAVE, ButtonType.CLOSE);

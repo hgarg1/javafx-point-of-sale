@@ -19,12 +19,14 @@ import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.FlowPane;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -72,6 +74,11 @@ final class CheckoutView extends BorderPane implements Screen {
     private final Label total = new Label();
     private final Label status = Ui.muted("");
     private final Label shiftNotice = Ui.muted("");
+    private final Label availability = Ui.error("");
+    private final Label searchSummary = Ui.muted("");
+    private final Label receiptReminder = Ui.muted("");
+    private final Button lastReceipt = new Button("View last receipt");
+    private String lastReceiptText;
     private final Button pay = new Button("Pay (F9)");
     private final Button hold = new Button("Hold (F6)");
     private final Button recall = new Button("Recall (F7)");
@@ -88,9 +95,28 @@ final class CheckoutView extends BorderPane implements Screen {
 
         scan.setPromptText("Scan a barcode, or type a SKU or name, then Enter");
         scan.setOnAction(e -> Ui.attempt(this::scanOrSearch));
+        scan.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.DOWN && !results.getItems().isEmpty()) {
+                results.getSelectionModel().selectFirst();
+                results.requestFocus();
+                e.consume();
+            }
+        });
+        results.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ENTER) {
+                addSelectedResult();
+                e.consume();
+            }
+        });
         // Key presses reach this node from whatever control has focus, so F9 works from anywhere on the screen.
         setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.F9) {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                scan.clear();
+                status.setText("");
+                showBrowseList();
+                scan.requestFocus();
+                e.consume();
+            } else if (e.getCode() == KeyCode.F9) {
                 Ui.attempt(this::pay);
             } else if (e.getCode() == KeyCode.F2) {
                 scan.requestFocus();
@@ -102,7 +128,7 @@ final class CheckoutView extends BorderPane implements Screen {
         });
 
         results.getColumns().addAll(
-                Columns.text("SKU", 90, Product::sku),
+                Columns.text("SKU", 125, Product::sku),
                 Columns.text("Name", 220, Product::name),
                 Columns.money("Price", 80, Product::priceCents),
                 Columns.whole("In stock", 70, Product::stockQty));
@@ -112,12 +138,16 @@ final class CheckoutView extends BorderPane implements Screen {
             }
         });
         Button addSelected = new Button("Add to cart");
+        addSelected.disableProperty().bind(results.getSelectionModel().selectedItemProperty().isNull());
         addSelected.setOnAction(e -> addSelectedResult());
-        VBox left = new VBox(8, Ui.heading("Products"), scan, results, addSelected);
+        VBox left = new VBox(8, Ui.heading("Products"), scan, searchSummary, results, addSelected);
         VBox.setVgrow(results, Priority.ALWAYS);
-        left.setPrefWidth(440);
+        left.setMinWidth(260);
+        left.setPadding(new Insets(0, 12, 0, 0));
 
-        cartTable.setPlaceholder(new Label("Cart is empty"));
+        cartTable.setPlaceholder(Ui.muted("Scan an item or select a product to start a sale."));
+        cartTable.setMinHeight(120);
+        total.getStyleClass().add("total-amount");
         cartTable.getColumns().addAll(
                 Columns.text("Item", 200, r -> r.line().product.name()),
                 Columns.whole("Qty", 50, r -> r.line().qty),
@@ -130,10 +160,22 @@ final class CheckoutView extends BorderPane implements Screen {
         Button editDiscount = new Button("Discount %...");
         editDiscount.setOnAction(e -> Ui.attempt(this::changeDiscount));
         Button remove = new Button("Remove");
+        remove.getStyleClass().add("danger-quiet");
         remove.setOnAction(e -> Ui.attempt(this::removeSelected));
         Button clear = new Button("Clear cart");
+        clear.getStyleClass().add("danger-quiet");
         clear.setOnAction(e -> Ui.attempt(this::clearCart));
-        HBox lineButtons = new HBox(8, editQty, editDiscount, remove, clear);
+        Button less = new Button("−");
+        less.setAccessibleText("Decrease selected quantity");
+        less.setOnAction(e -> Ui.attempt(() -> adjustQuantity(-1)));
+        Button more = new Button("+");
+        more.setAccessibleText("Increase selected quantity");
+        more.setOnAction(e -> Ui.attempt(() -> adjustQuantity(1)));
+        for (Button action : List.of(editQty, editDiscount, remove, less, more)) {
+            action.disableProperty().bind(cartTable.getSelectionModel().selectedItemProperty().isNull());
+        }
+        clear.disableProperty().bind(javafx.beans.binding.Bindings.isEmpty(cartTable.getItems()));
+        FlowPane lineButtons = new FlowPane(8, 8, less, more, editQty, editDiscount, remove, clear);
 
         hold.setOnAction(e -> Ui.attempt(this::holdSale));
         recall.setOnAction(e -> Ui.attempt(this::recallSale));
@@ -142,17 +184,37 @@ final class CheckoutView extends BorderPane implements Screen {
         pay.getStyleClass().addAll("primary", "big");
         pay.setMaxWidth(Double.MAX_VALUE);
         pay.setOnAction(e -> Ui.attempt(this::pay));
+        lastReceipt.setDisable(true);
+        lastReceipt.setOnAction(e -> {
+            ReceiptDialog.show(lastReceiptText);
+            scan.requestFocus();
+        });
+        availability.setWrapText(true);
+        receiptReminder.setWrapText(true);
+        for (Label feedback : List.of(availability, status, receiptReminder)) {
+            feedback.setMaxWidth(Double.MAX_VALUE);
+            feedback.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+            feedback.visibleProperty().bind(feedback.textProperty().isNotEmpty());
+            feedback.managedProperty().bind(feedback.visibleProperty());
+        }
+        lastReceipt.visibleProperty().bind(lastReceipt.disableProperty().not());
+        lastReceipt.managedProperty().bind(lastReceipt.visibleProperty());
         VBox totals = new VBox(6,
                 Ui.heading("Totals"),
                 row("Subtotal", subtotal), row("Discount", discount), row("Tax", tax), row("Total", total),
-                pay, shiftNotice, status);
+                pay, shiftNotice, availability, status, lastReceipt, receiptReminder);
         totals.getStyleClass().add("totals-panel");
 
         VBox right = new VBox(8, Ui.heading("Cart"), cartTable, lineButtons, parking, totals);
         VBox.setVgrow(cartTable, Priority.ALWAYS);
-        HBox.setHgrow(right, Priority.ALWAYS);
+        ScrollPane cartScroll = new ScrollPane(right);
+        cartScroll.getStyleClass().add("page-scroll");
+        cartScroll.setFitToWidth(true);
+        cartScroll.setFitToHeight(true);
+        cartScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        right.setPadding(new Insets(0, 0, 0, 12));
 
-        setCenter(new HBox(16, left, right));
+        setCenter(Ui.split(.46, left, cartScroll));
         setPadding(new Insets(12));
         onShow();
     }
@@ -168,11 +230,18 @@ final class CheckoutView extends BorderPane implements Screen {
     /** The product list when nothing has been searched for: every product that is for sale, by name. */
     private void showBrowseList() {
         results.getItems().setAll(services.inventory().listProducts().stream().filter(Product::active).toList());
+        searchSummary.setText(results.getItems().size() + " products");
     }
 
     /** True if the cashier has started a sale that has not been completed. The shell asks before leaving it. */
     boolean hasItems() {
         return !cart.isEmpty();
+    }
+
+    void clearSessionReceipt() {
+        lastReceiptText = null;
+        lastReceipt.setDisable(true);
+        receiptReminder.setText("");
     }
 
     private void refreshShift() {
@@ -188,19 +257,22 @@ final class CheckoutView extends BorderPane implements Screen {
 
     private void scanOrSearch() {
         String text = scan.getText();
-        scan.clear();
         if (text == null || text.isBlank()) {
             return;
         }
         Optional<Product> byCode = services.inventory().findByCode(text);
         if (byCode.isPresent()) {
+            scan.clear();
             showBrowseList();
             addToCart(byCode.get());
             return;
         }
         List<Product> matches = services.inventory().search(text);
         results.getItems().setAll(matches);
+        searchSummary.setText(matches.size() + " matches for \"" + text + "\"");
+        results.getSelectionModel().selectFirst();
         if (matches.size() == 1) {
+            scan.clear();
             showBrowseList();
             addToCart(matches.get(0));
         } else if (matches.isEmpty()) {
@@ -228,7 +300,16 @@ final class CheckoutView extends BorderPane implements Screen {
             cart.add(new CartLine(product, 1));
         }
         status.setText("");
+        scan.clear();
         cartChanged();
+        for (int i = 0; i < cartTable.getItems().size(); i++) {
+            if (cartTable.getItems().get(i).line().product.id() == product.id()) {
+                cartTable.getSelectionModel().select(i);
+                cartTable.scrollTo(i);
+                break;
+            }
+        }
+        scan.requestFocus();
     }
 
     private CartLine selectedLine() {
@@ -256,6 +337,24 @@ final class CheckoutView extends BorderPane implements Screen {
         if (changed) {
             cartChanged();
         }
+    }
+
+    private void adjustQuantity(int delta) {
+        CartLine line = selectedLine();
+        if (line.qty + delta < 1) {
+            status.setText("Use Remove to take this item out of the cart.");
+            return;
+        }
+        int previous = line.qty;
+        line.qty += delta;
+        try {
+            refreshCartStrict();
+        } catch (BusinessException e) {
+            line.qty = previous;
+            throw e;
+        }
+        status.setText("");
+        cartChanged();
     }
 
     /**
@@ -358,6 +457,7 @@ final class CheckoutView extends BorderPane implements Screen {
         table.getSelectionModel().selectFirst();
         table.setPrefHeight(240);
         Button discard = new Button("Discard selected");
+        discard.getStyleClass().add("danger-quiet");
         discard.setOnAction(e -> Ui.attempt(() -> discardHeld(table)));
 
         AtomicReference<HeldCart> chosen = new AtomicReference<>();
@@ -467,7 +567,7 @@ final class CheckoutView extends BorderPane implements Screen {
             rows.add(new Row(cart.get(i), quote.lines().get(i)));
         }
         int selected = cartTable.getSelectionModel().getSelectedIndex();
-        cartTable.setItems(FXCollections.observableArrayList(rows));
+        cartTable.getItems().setAll(rows);
         if (selected >= 0 && selected < rows.size()) {
             cartTable.getSelectionModel().select(selected);
         }
@@ -479,8 +579,11 @@ final class CheckoutView extends BorderPane implements Screen {
     private void refreshCart() {
         try {
             refreshCartStrict();
+            services.checkout().validateAvailability(toItems());
+            availability.setText("");
         } catch (BusinessException e) {
-            status.setText(e.getMessage());
+            availability.setText(e.getMessage());
+            pay.setDisable(true);
         }
     }
 
@@ -499,39 +602,52 @@ final class CheckoutView extends BorderPane implements Screen {
         if (cart.isEmpty()) {
             throw new BusinessException("The cart is empty");
         }
+        if (services.shifts().currentShift().isEmpty()) {
+            throw new BusinessException("Open a shift on the Shift screen before taking payment.");
+        }
+        refreshCart();
+        if (!availability.getText().isEmpty()) {
+            return;
+        }
         List<CartItem> items = toItems();
         long totalCents = quote.totalCents();
-
-        List<PaymentRequest> tenders;
-        if (totalCents == 0) {
-            if (!Ui.confirm("Complete this sale with nothing to pay?")) {
-                return;
-            }
-            tenders = List.of();
-        } else {
-            Optional<List<PaymentRequest>> asked = PaymentDialog.ask(services, totalCents);
-            if (asked.isEmpty()) {
-                return;
-            }
-            tenders = asked.get();
-        }
 
         if (paymentKey == null) {
             paymentKey = UUID.randomUUID().toString();
         }
-        SaleDetails details = completeSale(items, tenders);
+        SaleDetails details;
+        if (totalCents == 0) {
+            if (!Ui.confirm("Complete this sale with nothing to pay?")) {
+                return;
+            }
+            details = completeSale(items, List.of());
+        } else {
+            Optional<SaleDetails> asked = PaymentDialog.ask(services, totalCents,
+                    tenders -> completeSale(items, tenders));
+            if (asked.isEmpty()) {
+                refreshCart();
+                return;
+            }
+            details = asked.get();
+        }
         if (details == null) {
             return;
         }
 
         String cashier = services.session().requireUser().username();
-        ReceiptDialog.show(ReceiptFormatter.format(services.storeName(),
-                services.storeSettings().current().receiptFooter(), details, cashier));
         cart.clear();
         approverId = null;
         paymentKey = null;
+        clearSessionReceipt();
         status.setText("Sale " + details.sale().receiptNo() + " completed.");
+        lastReceiptText = ReceiptFormatter.format(services.storeName(),
+                services.storeSettings().current().receiptFooter(), details, cashier);
+        lastReceipt.setDisable(false);
+        receiptReminder.setText(details.giftCardCodes().isEmpty() ? ""
+                : "Gift cards issued. View or save the receipt to give the customer their codes.");
+        showBrowseList();
         refreshCart();
+        scan.requestFocus();
     }
 
     /** Completes the sale. Asks for manager approval if the service still needs it. Returns null if cancelled. */

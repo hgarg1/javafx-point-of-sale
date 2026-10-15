@@ -6,6 +6,8 @@ import com.example.app.domain.Tender;
 import com.example.app.error.BusinessException;
 import com.example.app.service.AppServices;
 import com.example.app.service.CheckoutService.PaymentRequest;
+import com.example.app.service.CheckoutService.SaleDetails;
+import java.util.function.Function;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -15,6 +17,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.FlowPane;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,12 +42,25 @@ final class PaymentDialog {
     private record Content(Node node, List<Row> rows) {
     }
 
-    static Optional<List<PaymentRequest>> ask(AppServices services, long totalCents) {
-        Content content = content(services, totalCents);
-        AtomicReference<List<PaymentRequest>> result = new AtomicReference<>();
-        boolean paid = FormDialog.run(null, "Payment", "Take payment for " + Ui.money(totalCents), content.node(),
-                "Take payment", () -> result.set(build(content.rows(), totalCents)));
+    static Optional<SaleDetails> ask(AppServices services, long totalCents,
+                                    Function<List<PaymentRequest>, SaleDetails> submit) {
+        AtomicReference<SaleDetails> result = new AtomicReference<>();
+        boolean paid = FormDialog.showAndWait(build(services, totalCents, payments -> {
+            SaleDetails details = submit.apply(payments);
+            if (details == null) {
+                throw new BusinessException("Approval cancelled. The sale has not been completed.");
+            }
+            result.set(details);
+            return details;
+        }));
         return paid ? Optional.ofNullable(result.get()) : Optional.empty();
+    }
+
+    static Dialog<ButtonType> build(AppServices services, long totalCents,
+                                    Function<List<PaymentRequest>, SaleDetails> submit) {
+        Content content = content(services, totalCents);
+        return FormDialog.build(null, "Payment", "Take payment for " + Ui.money(totalCents), content.node(),
+                "Take payment", () -> submit.apply(build(content.rows(), totalCents)));
     }
 
     /** The dialog as the till shows it, built but not shown. The screenshot tests use it. */
@@ -57,6 +73,12 @@ final class PaymentDialog {
 
     private static Content content(AppServices services, long totalCents) {
         GridPane grid = Ui.grid();
+        var types = new javafx.scene.layout.ColumnConstraints(170);
+        var amounts = new javafx.scene.layout.ColumnConstraints(160);
+        var references = new javafx.scene.layout.ColumnConstraints(230);
+        amounts.setHgrow(javafx.scene.layout.Priority.ALWAYS);
+        references.setHgrow(javafx.scene.layout.Priority.ALWAYS);
+        grid.getColumnConstraints().setAll(types, amounts, references);
         grid.addRow(0, new Label("Total due"), boldLabel(Ui.money(totalCents)));
         grid.addRow(1, boldLabel("Payment type"), boldLabel("Amount"), boldLabel("Reference"));
 
@@ -75,7 +97,53 @@ final class PaymentDialog {
                 grid.addRow(line++, new Label(tender.name()), amount, reference);
             }
         }
-        VBox content = new VBox(12, grid, quickCash(totalCents, rows));
+        Label remaining = boldLabel("");
+        Label received = new Label();
+        Label change = boldLabel("");
+        Label feedback = Ui.error("");
+        VBox summary = new VBox(6, remaining, received, change, feedback);
+        summary.getStyleClass().add("card");
+        Runnable update = () -> {
+            try {
+                long nonCash = 0;
+                long cash = 0;
+                boolean firstCash = true;
+                for (Row row : rows) {
+                    if (!row.tender().isCash()) {
+                        nonCash += amountOf(row.amount(), row.tender().name(), totalCents - nonCash);
+                    }
+                }
+                for (Row row : rows) {
+                    if (row.tender().isCash()) {
+                        long amount = isBlank(row.amount().getText())
+                                ? (firstCash ? totalCents - nonCash : 0)
+                                : Ui.parseMoney(row.amount().getText(), row.tender().name());
+                        if (amount < 0) {
+                            throw new BusinessException("Cash received cannot be negative");
+                        }
+                        cash = Math.addExact(cash, amount);
+                        firstCash = false;
+                    }
+                }
+                remaining.setText("Remaining: " + Ui.money(Math.max(0, totalCents - nonCash - cash)));
+                received.setText("Cash received: " + Ui.money(cash));
+                change.setText("Change: " + Ui.money(Math.max(0, cash - (totalCents - nonCash))));
+                feedback.setText("");
+            } catch (BusinessException | ArithmeticException e) {
+                remaining.setText("Remaining: —");
+                received.setText("Cash received: —");
+                change.setText("Change: —");
+                feedback.setText(e instanceof BusinessException ? e.getMessage() : "Payment amount is too large");
+            }
+        };
+        for (Row row : rows) {
+            row.amount().textProperty().addListener((obs, was, now) -> update.run());
+        }
+        update.run();
+        VBox content = new VBox(12, grid,
+                Ui.muted("Leave the first cash amount blank for exact cash covering the remaining balance."),
+                quickCash(totalCents, rows), summary);
+        content.setPrefWidth(640);
         return new Content(content, rows);
     }
 
@@ -137,8 +205,8 @@ final class PaymentDialog {
     }
 
     /** Buttons that fill the first cash amount: the exact remainder, or a common note. Amounts follow the store's format. */
-    private static HBox quickCash(long totalCents, List<Row> rows) {
-        HBox row = new HBox(6, new Label("Quick cash"));
+    private static FlowPane quickCash(long totalCents, List<Row> rows) {
+        FlowPane row = new FlowPane(6, 6, new Label("Quick cash"));
         Row cash = rows.stream().filter(r -> r.tender().isCash()).findFirst().orElse(null);
         if (cash == null) {
             return row;

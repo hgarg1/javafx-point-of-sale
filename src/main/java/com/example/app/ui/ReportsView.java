@@ -27,9 +27,17 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.Region;
+import javafx.geometry.Pos;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.control.ScrollPane;
 import javafx.stage.FileChooser;
 import javafx.util.StringConverter;
 
@@ -73,19 +81,42 @@ final class ReportsView extends VBox implements Screen {
         this.services = services;
         setSpacing(12);
         setPadding(new Insets(16));
+        getStyleClass().add("reports-page");
+        from.setPrefWidth(190);
+        to.setPrefWidth(190);
 
-        Button show = new Button("Show");
+        Button show = new Button("Update report");
+        show.setId("report-update");
         show.getStyleClass().add("primary");
         show.setOnAction(e -> Ui.attempt(this::load));
-        Button exportLedger = new Button("Export ledger CSV...");
+        MenuItem exportLedger = new MenuItem("Ledger CSV…");
         exportLedger.setOnAction(e -> Ui.attempt(this::exportLedger));
-        Button exportStock = new Button("Export stock valuation CSV...");
+        MenuItem exportStock = new MenuItem("Stock valuation CSV…");
         exportStock.setOnAction(e -> Ui.attempt(this::exportStock));
-        HBox range = new HBox(8, new Label("From"), from, new Label("To"), to, show, exportLedger, exportStock);
+        MenuButton exports = new MenuButton("Export CSV", Icons.icon("reports"), exportLedger, exportStock);
+        exports.setId("report-exports");
+        VBox introduction = new VBox(4, Ui.heading("Reports"), Ui.muted("A clear view of your store's performance."));
+        Region gap = new Region();
+        HBox.setHgrow(gap, Priority.ALWAYS);
+        HBox heading = new HBox(16, introduction, gap, exports);
+        heading.setAlignment(Pos.CENTER_LEFT);
+        FlowPane range = new FlowPane(14, 12, dateField("From", from), dateField("To", to), show);
+        range.setAlignment(Pos.BOTTOM_LEFT);
+        range.setRowValignment(javafx.geometry.VPos.BOTTOM);
+        range.getStyleClass().add("report-filter");
+        summary.setWrapText(true);
+        summary.setMinHeight(Region.USE_PREF_SIZE);
 
-        getChildren().addAll(Ui.heading("Reports"), range, summary, tabs());
+        getChildren().addAll(heading, range, summary, tabs());
         VBox.setVgrow(getChildren().get(getChildren().size() - 1), Priority.ALWAYS);
         onShow();
+    }
+
+    private static VBox dateField(String name, DatePicker picker) {
+        Label caption = new Label(name);
+        caption.getStyleClass().add("report-field-label");
+        caption.setLabelFor(picker);
+        return new VBox(6, caption, picker);
     }
 
     private TabPane tabs() {
@@ -108,24 +139,44 @@ final class ReportsView extends VBox implements Screen {
 
     private Node dashboardPane() {
         VBox hero = new VBox(4, heroCaption, heroValue);
-        hero.getStyleClass().add("card");
-        hero.setMinWidth(260);
-        heroValue.getStyleClass().add("hero-value");
-
-        HBox tiles = new HBox(12,
+        hero.getStyleClass().addAll("card", "report-stat", "report-net-card");
+        heroValue.getStyleClass().add("report-stat-value");
+        heroCaption.setWrapText(true);
+        List<VBox> cards = List.of(hero,
                 tile("Transactions", transactions),
                 tile("Average basket", averageBasket),
                 tile("Refunds", refunds),
                 tile("Voids", voids),
                 tile("Low-stock products", lowStock));
-        HBox.setHgrow(tiles, Priority.ALWAYS);
-        HBox top = new HBox(16, hero, tiles);
+        GridPane top = new GridPane();
+        top.setId("report-stats");
+        top.setHgap(12); top.setVgap(12);
+        cards.forEach(card -> { card.setMinWidth(0); card.setMaxWidth(Double.MAX_VALUE); });
+        java.util.function.IntConsumer arrange = count -> {
+            top.getColumnConstraints().clear();
+            for (int col = 0; col < count; col++) {
+                ColumnConstraints column = new ColumnConstraints();
+                column.setPercentWidth(100.0 / count);
+                top.getColumnConstraints().add(column);
+            }
+            for (int index = 0; index < cards.size(); index++) {
+                GridPane.setColumnIndex(cards.get(index), index % count);
+                GridPane.setRowIndex(cards.get(index), index / count);
+            }
+        };
+        top.getChildren().addAll(cards);
+        arrange.accept(3);
+        top.widthProperty().addListener((obs, was, width) -> {
+            int columns = width.doubleValue() >= 680 ? 3 : 2;
+            if (top.getColumnConstraints().size() != columns) arrange.accept(columns);
+        });
 
         chart.setTitle("Net sales per day");
         chart.setLegendVisible(false);
         chart.setAnimated(false);
         chart.getData().add(series);
         chart.setMinHeight(280);
+        chart.setPrefHeight(320);
         NumberAxis money = (NumberAxis) chart.getYAxis();
         money.setTickLabelFormatter(wholeMoney());
         money.setForceZeroInRange(true);
@@ -138,21 +189,29 @@ final class ReportsView extends VBox implements Screen {
                 Columns.money("Net sales", 120, DailyTotal::netCents));
         dailyTable.setPlaceholder(new Label("No sales in this period."));
         dailyTable.setPrefHeight(180);
+        dailyTable.setMinHeight(180);
 
-        VBox pane = new VBox(14, top, chartEmpty, chart, Ui.muted("The same figures, as a table:"), dailyTable);
+        VBox chartCard = new VBox(chartEmpty, chart);
+        chartCard.getStyleClass().add("card");
+        VBox tableCard = new VBox(12, Ui.heading("Daily breakdown"), dailyTable);
+        tableCard.getStyleClass().add("card");
+        VBox pane = new VBox(16, top, chartCard, tableCard);
         pane.setPadding(new Insets(12, 0, 0, 0));
         VBox.setVgrow(chart, Priority.ALWAYS);
-        return pane;
+        ScrollPane scroll = new ScrollPane(pane);
+        scroll.getStyleClass().add("page-scroll");
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        return scroll;
     }
 
     private static VBox tile(String label, Label value) {
         Label caption = new Label(label);
         caption.getStyleClass().add("stat-label");
         caption.setWrapText(true);
-        value.getStyleClass().add("stat-value");
+        value.getStyleClass().add("report-stat-value");
         VBox box = new VBox(4, caption, value);
-        box.getStyleClass().add("card");
-        box.setMinWidth(120);
+        box.getStyleClass().addAll("card", "report-stat");
         HBox.setHgrow(box, Priority.ALWAYS);
         return box;
     }
@@ -168,9 +227,10 @@ final class ReportsView extends VBox implements Screen {
         Button reprint = new Button("Reprint receipt");
         reprint.setOnAction(e -> Ui.attempt(this::reprintSelected));
         voidButton.setOnAction(e -> Ui.attempt(this::voidSelected));
+        voidButton.getStyleClass().add("danger-quiet");
         voidButton.setDisable(true);
         sales.getSelectionModel().selectedItemProperty().addListener((obs, was, now) -> updateVoidButton());
-        HBox actions = new HBox(8, reprint, voidButton, voidHint);
+        var actions = Ui.actions(reprint, voidButton, voidHint);
         VBox pane = new VBox(8,
                 Ui.muted("Select a sale to reprint its receipt or void it. Refunds are made from the Refunds screen."),
                 actions, sales);
@@ -220,9 +280,9 @@ final class ReportsView extends VBox implements Screen {
         updateVoidButton();
         var entries = services.reports().ledger(start, end);
         ledger.setItems(FXCollections.observableArrayList(entries));
-        summary.setText(board.transactions() + " sale(s), net " + Ui.money(board.netSalesCents())
-                + " in the period. Ledger closing balance " + Ui.money(
-                entries.isEmpty() ? 0 : entries.get(entries.size() - 1).runningTotalCents()) + ".");
+        summary.setText(board.transactions() + " transactions  ·  Net " + Ui.money(board.netSalesCents())
+                + "  ·  Ledger balance " + Ui.money(
+                entries.isEmpty() ? 0 : entries.get(entries.size() - 1).runningTotalCents()));
     }
 
     private void showDashboard(Dashboard board) {
@@ -386,7 +446,15 @@ final class ReportsView extends VBox implements Screen {
         };
     }
 
-    private static LocalDate requireDate(DatePicker picker, String label) {
+    static LocalDate requireDate(DatePicker picker, String label) {
+        try {
+            // Before the skin is installed the editor is blank even though the picker has an initial value.
+            if (picker.getSkin() != null || !picker.getEditor().getText().isBlank()) {
+                picker.commitValue();
+            }
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new BusinessException(label + " date is invalid. Use the calendar or enter a valid date.");
+        }
         if (picker.getValue() == null) {
             throw new BusinessException(label + " date is required");
         }

@@ -97,6 +97,8 @@ final class PurchasingView extends BorderPane implements Screen {
         statusFilter.getSelectionModel().selectedIndexProperty().addListener((obs, was, now) -> Ui.attempt(this::loadOrders));
 
         newOrder.getStyleClass().add("primary");
+        removeItem.getStyleClass().add("danger-quiet");
+        cancel.getStyleClass().add("danger-quiet");
         newOrder.setOnAction(e -> Ui.attempt(this::createOrder));
         addItem.setOnAction(e -> Ui.attempt(this::addLine));
         removeItem.setOnAction(e -> Ui.attempt(this::removeLine));
@@ -108,11 +110,19 @@ final class PurchasingView extends BorderPane implements Screen {
 
         // Stacked rather than side by side, so the columns and the action buttons have the full width of the window.
         HBox filters = new HBox(8, new Label("Show"), statusFilter, newOrder);
-        HBox actions = new HBox(8, addItem, removeItem, send, receive, cancel, export);
+        var actions = Ui.actions(addItem, removeItem, send, receive, cancel, export);
         orders.setPrefHeight(230);
         lines.setPrefHeight(260);
-        VBox ordersPane = new VBox(8, filters, orders, header, note, lines, actions);
+        VBox orderList = new VBox(12, filters, orders);
+        VBox detail = new VBox(12, header, note, lines, actions);
+        VBox.setVgrow(orders, Priority.ALWAYS);
         VBox.setVgrow(lines, Priority.ALWAYS);
+        orderList.setMinHeight(180);
+        detail.setMinHeight(230);
+        var orderSplit = Ui.split(.42, orderList, detail);
+        orderSplit.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        VBox ordersPane = new VBox(orderSplit);
+        VBox.setVgrow(orderSplit, Priority.ALWAYS);
         ordersPane.setPadding(new Insets(12, 0, 0, 0));
 
         ordersTab.setContent(ordersPane);

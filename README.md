@@ -45,15 +45,25 @@
 | 🎨 | **Light and dark** | Follows your system theme, with compact, comfortable and touch-screen densities. |
 | 💾 | **Backups** | Automatic backups on exit and before any upgrade, plus a Back up now button. |
 
+Every screen and dialog shares the sign-in page's warm ivory, olive and charcoal palette. Buttons have smooth hover and pressed states; animations respect the operating system's reduced-motion preference. Calendar pickers, menus and table editors use the same theme in light and dark mode.
+
+Drag the dividers to adjust the sidebar, checkout panes, product editor, settings cards and stock or purchasing sections. Controls wrap in smaller windows, forms give inputs room to grow, and refund quantities stay linked to the correct item after sorting. Typed report dates are validated before running a report.
+
+The Shift workspace has a panoramic retail header, prominent sales totals, and adjustable payment-activity and drawer-count panels. It supports opening-float presets and keeps the expected closing cash hidden until the independent count is submitted.
+
+Reports groups the date range separately from its CSV export menu and arranges dashboard metrics in an ordered, evenly sized grid. The header identifies the signed-in user with an initials avatar and separate username and role labels.
+
 ## Screenshots
 
 <p align="center"><sub>The screenshots are rendered by the test suite from invented demo data. No real customers or products appear here.</sub></p>
 
 | Screen | Light | Dark |
 |:--|:--:|:--:|
+| **Sign in** | <a href="docs/screenshots/login-light.png"><img src="docs/screenshots/login-light.png" alt="Sign in with daylight retail artwork" width="360"></a> | <a href="docs/screenshots/login-dark.png"><img src="docs/screenshots/login-dark.png" alt="Sign in with evening retail artwork" width="360"></a> |
 | **Checkout** | <a href="docs/screenshots/checkout-light.png"><img src="docs/screenshots/checkout-light.png" alt="Checkout, light theme" width="360"></a> | <a href="docs/screenshots/checkout-dark.png"><img src="docs/screenshots/checkout-dark.png" alt="Checkout, dark theme" width="360"></a> |
 | **Reports** | <a href="docs/screenshots/reports-light.png"><img src="docs/screenshots/reports-light.png" alt="Reports, light theme" width="360"></a> | <a href="docs/screenshots/reports-dark.png"><img src="docs/screenshots/reports-dark.png" alt="Reports, dark theme" width="360"></a> |
 | **Take payment** | <a href="docs/screenshots/payment-light.png"><img src="docs/screenshots/payment-light.png" alt="Payment dialog, light theme" width="360"></a> | <a href="docs/screenshots/payment-dark.png"><img src="docs/screenshots/payment-dark.png" alt="Payment dialog, dark theme" width="360"></a> |
+| **Payment retry** | <a href="docs/screenshots/payment-error-light.png"><img src="docs/screenshots/payment-error-light.png" alt="Payment error with input preserved, light theme" width="360"></a> | <a href="docs/screenshots/payment-error-dark.png"><img src="docs/screenshots/payment-error-dark.png" alt="Payment error with input preserved, dark theme" width="360"></a> |
 | **Settings: payment types** | <a href="docs/screenshots/settings-light.png"><img src="docs/screenshots/settings-light.png" alt="Settings, light theme" width="360"></a> | <a href="docs/screenshots/settings-dark.png"><img src="docs/screenshots/settings-dark.png" alt="Settings, dark theme" width="360"></a> |
 
 <details>
@@ -68,10 +78,16 @@
 | <a href="docs/screenshots/refunds-light.png"><img src="docs/screenshots/refunds-light.png" alt="Refunds" width="420"></a> | <a href="docs/screenshots/shift-light.png"><img src="docs/screenshots/shift-light.png" alt="Shift" width="420"></a> |
 | **Stock** | **Users** |
 | <a href="docs/screenshots/stock-light.png"><img src="docs/screenshots/stock-light.png" alt="Stock" width="420"></a> | <a href="docs/screenshots/users-light.png"><img src="docs/screenshots/users-light.png" alt="Users" width="420"></a> |
-| **Log in** | **Receipt** |
-| <a href="docs/screenshots/login-light.png"><img src="docs/screenshots/login-light.png" alt="Log in" width="420"></a> | <a href="docs/screenshots/receipt-light.png"><img src="docs/screenshots/receipt-light.png" alt="Receipt" width="420"></a> |
+| **First-time setup** | **Receipt** |
+| <a href="docs/screenshots/setup-light.png"><img src="docs/screenshots/setup-light.png" alt="Create owner account" width="420"></a> | <a href="docs/screenshots/receipt-light.png"><img src="docs/screenshots/receipt-light.png" alt="Receipt" width="420"></a> |
 
 </details>
+
+## Native installers
+
+Self-contained installers bundle Java and JavaFX, with separate normal and demo applications. Local build scripts target Windows 11 x64 (`.exe`), macOS Intel/Apple Silicon (`.dmg`), and Ubuntu 24.04 x64 (`.deb`). Each must be built on its native OS. These unsigned packages are for private testing.
+
+See [installer build and installation instructions](packaging/README.md) and [platform verification status](packaging/VERIFICATION.md). Store data stays in the existing user-home folders and survives uninstall or upgrade.
 
 ## Quick start
 
@@ -89,6 +105,22 @@ mvn javafx:run
 The first start shows a setup screen. Create the **owner account** there. That is the only account the setup makes. As the
 owner, open **Users** and add the staff. New accounts get a temporary password and choose their own at first login. There is
 no default password.
+
+To try the app with sample products, sales, purchasing and staff accounts, run `mvn -Pdemo javafx:run`.
+The window is marked **[DEMO]**, and its database, preferences, logs and backups live separately under
+`%USERPROFILE%\.cashier-app-demo`. The sample data is loaded only on the first demo launch; later launches keep your
+demo changes. Normal startup continues to use your existing store.
+
+| Demo role | Username | Password |
+|:--|:--|:--|
+| Admin | `owner` | `owner-pass-1` |
+| Manager | `maria` | `maria-pass-1` |
+| Cashier | `sam` | `sam-pass-1` |
+
+Sign-in and setup use a shared responsive layout with generated daylight and evening retail artwork, labeled fields,
+inline errors, and light/dark palettes. Sign-in includes Show/Hide password. Artwork is bundled locally, so no network
+connection is required; smaller layouts hide it to keep the form usable. Image-generation prompts are recorded in
+`src/main/resources/com/example/app/ui/artwork/artwork-prompts.txt`.
 
 <details>
 <summary><b>Where things are</b></summary>
@@ -188,6 +220,22 @@ sequenceDiagram
 
 A barcode scanner types the code and presses Enter, so it works in the scan box like the keyboard. For a touch screen, choose
 the *Touch screen* density in Settings to make buttons and fields larger.
+
+Checkout keeps searches with multiple matches or no matches visible. Use Down to focus the results, Enter to add the
+selected product, and Escape to return to the full product list. Stock problems appear beside the totals and prevent
+payment until the cart is corrected. Availability is checked again when the sale completes.
+
+If a payment is declined or checkout fails, the payment dialog stays open with the entered amounts and references.
+Correct them and retry, or cancel to return to the cart. Cancelling manager approval also leaves payment open.
+
+A successful sale clears the cart and returns to scanning. **View last receipt** opens the latest receipt for viewing
+or saving as text; receipts no longer open automatically. Gift-card sales show a reminder to give the customer their
+codes from the receipt. The latest receipt is retained only for the current login; older receipts remain in Reports.
+
+Product drafts are protected when changing selection or filters, starting a new product, leaving the screen, logging
+out, or closing the window. Choose Save, Discard, or Cancel. A failed save keeps the draft open. Drafts remain in memory,
+including while the screen is idle-locked. Dashboard cards and report controls wrap at smaller window sizes, and the
+dashboard scrolls vertically when needed.
 
 ## Roles
 

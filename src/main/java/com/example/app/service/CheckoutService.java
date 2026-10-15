@@ -106,6 +106,15 @@ public final class CheckoutService {
         this.payments = new PaymentCoordinator(providers);
     }
 
+    /** Checks availability without reserving stock or changing data. Checkout repeats these checks before charging. */
+    public void validateAvailability(List<CartItem> cart) {
+        session.requireUser();
+        if (cart.size() > MAX_LINES) {
+            throw new BusinessException("A sale can have at most " + MAX_LINES + " lines");
+        }
+        loadProducts(cart, true);
+    }
+
     /** Totals for a cart as it would be charged, priced from current product data. Writes nothing. */
     public Quote quote(List<CartItem> cart) {
         session.requireUser();

@@ -7,6 +7,7 @@ import com.example.app.domain.ProductDraft;
 import com.example.app.domain.ProductKind;
 import com.example.app.domain.Supplier;
 import com.example.app.error.PosException;
+import com.example.app.error.BusinessException;
 import com.example.app.service.AppServices;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -20,6 +21,12 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.Node;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -78,25 +85,120 @@ final class ProductsView extends BorderPane implements Screen {
 
     /** The product being edited, or null when creating a new one. */
     private Product selected;
+    private List<Object> baseline;
+    private boolean resolving;
+    private boolean selectionPending;
+
+    private List<Object> formValues() {
+        return java.util.Arrays.asList(sku.getText(), barcode.getText(), name.getText(), category.getValue(),
+                supplier.getValue(), price.getText(), cost.getText(), taxPercent.getText(), reorderLevel.getText(),
+                reorderQty.getText(), initialStock.getText(), active.isSelected(), giftCard.isSelected());
+    }
+
+    boolean hasDraft() {
+        return baseline != null && !baseline.equals(formValues());
+    }
+
+    @Override
+    public boolean canLeave() {
+        if (!hasDraft() || resolving) {
+            return true;
+        }
+        ButtonType saveChoice = new ButtonType("Save", ButtonBar.ButtonData.YES);
+        ButtonType discard = new ButtonType("Discard", ButtonBar.ButtonData.NO);
+        Alert prompt = new Alert(Alert.AlertType.CONFIRMATION,
+                "Save your product changes before continuing?", saveChoice, discard, ButtonType.CANCEL);
+        prompt.setHeaderText("Unsaved product changes");
+        if (getScene() != null) {
+            prompt.initOwner(getScene().getWindow());
+        }
+        ThemeManager.apply(prompt.getDialogPane());
+        ButtonType choice = prompt.showAndWait().orElse(ButtonType.CANCEL);
+        if (choice == ButtonType.CANCEL) {
+            return false;
+        }
+        resolving = true;
+        try {
+            if (choice == saveChoice) {
+                save();
+            } else {
+                fill(selected);
+            }
+            return true;
+        } catch (PosException e) {
+            message.setText(e.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            LOG.log(Level.SEVERE, "Saving a product failed", e);
+            message.setText("Something went wrong. The details were written to the log.");
+            return false;
+        } finally {
+            resolving = false;
+        }
+    }
 
     ProductsView(AppServices services) {
         this.services = services;
 
         table.getColumns().addAll(
-                Columns.text("SKU", 90, Product::sku),
+                Columns.text("SKU", 125, Product::sku),
                 Columns.text("Name", 200, Product::name),
                 Columns.text("Category", 110, p -> categoryNames.getOrDefault(p.categoryId(), "")),
                 Columns.money("Price", 80, Product::priceCents),
                 Columns.whole("On hand", 70, Product::stockQty),
                 Columns.text("Active", 60, p -> p.active() ? "Yes" : "No"));
-        table.getSelectionModel().selectedItemProperty().addListener((obs, old, now) -> fill(now));
+        table.getSelectionModel().selectedItemProperty().addListener((obs, old, now) -> {
+            if (resolving || selectionPending || now == selected) {
+                return;
+            }
+            if (!canLeave()) {
+                // TableView can update selectedItem twice during one selection. Restore only after it settles.
+                selectionPending = true;
+                javafx.application.Platform.runLater(() -> {
+                    resolving = true;
+                    try {
+                        table.getSelectionModel().select(selected);
+                    } finally {
+                        resolving = false;
+                        selectionPending = false;
+                    }
+                });
+                return;
+            }
+            resolving = true;
+            table.getSelectionModel().select(now);
+            fill(now);
+            resolving = false;
+        });
         table.setItems(shown);
         VBox.setVgrow(table, Priority.ALWAYS);
 
         filter.setPromptText("Search name or SKU");
-        filter.textProperty().addListener((obs, was, now) -> applyFilter());
+        filter.textProperty().addListener((obs, was, now) -> {
+            if (resolving) {
+                return;
+            }
+            if (selected != null && !matchesFilter(selected) && !canLeave()) {
+                resolving = true;
+                filter.setText(was);
+                resolving = false;
+                return;
+            }
+            applyFilter();
+        });
         status.setValue(ALL);
-        status.valueProperty().addListener((obs, was, now) -> applyFilter());
+        status.valueProperty().addListener((obs, was, now) -> {
+            if (resolving) {
+                return;
+            }
+            if (selected != null && !matchesFilter(selected) && !canLeave()) {
+                resolving = true;
+                status.setValue(was);
+                resolving = false;
+                return;
+            }
+            applyFilter();
+        });
         HBox filters = new HBox(8, filter, status);
         HBox.setHgrow(filter, Priority.ALWAYS);
         VBox listPane = new VBox(8, filters, table);
@@ -110,41 +212,78 @@ final class ProductsView extends BorderPane implements Screen {
         initialStock.setTooltip(new Tooltip("Quantity on hand when the product is created. Change it later on the Stock screen."));
         reorderQty.setTooltip(new Tooltip("How many to order when this product runs low. Zero means up to twice the reorder level."));
 
-        var grid = Ui.grid();
-        int row = 0;
-        grid.addRow(row++, new Label("SKU"), sku);
-        grid.addRow(row++, new Label("Barcode"), barcode);
-        grid.addRow(row++, new Label("Name"), name);
-        grid.addRow(row++, new Label("Category"), withAddButton(category, this::addCategory));
-        grid.addRow(row++, new Label("Supplier"), withAddButton(supplier, this::addSupplier));
-        grid.addRow(row++, new Label("Price"), price);
-        grid.addRow(row++, new Label("Cost"), cost);
-        grid.addRow(row++, new Label("Tax rate %"), taxPercent);
-        grid.addRow(row++, new Label("Reorder at"), reorderLevel);
-        grid.addRow(row++, new Label("Order quantity"), reorderQty);
-        grid.addRow(row++, new Label("Initial stock"), initialStock);
-        grid.add(active, 1, row);
-        grid.add(giftCard, 1, row + 1);
+        var identity = Ui.grid();
+        formRow(identity, 0, "SKU *", sku);
+        formRow(identity, 1, "Name *", name);
+        formRow(identity, 2, "Barcode", barcode);
+        formRow(identity, 3, "Category", withAddButton(category, this::addCategory));
+        var pricing = Ui.grid();
+        formRow(pricing, 0, "Price *", price);
+        formRow(pricing, 1, "Cost", cost);
+        formRow(pricing, 2, "Tax rate % *", taxPercent);
+        var inventory = Ui.grid();
+        formRow(inventory, 0, "Supplier", withAddButton(supplier, this::addSupplier));
+        formRow(inventory, 1, "Reorder at", reorderLevel);
+        formRow(inventory, 2, "Order quantity", reorderQty);
+        formRow(inventory, 3, "Initial stock", initialStock);
+        for (TextField field : List.of(sku, name, price, cost, taxPercent, reorderLevel, reorderQty, initialStock)) {
+            field.textProperty().addListener((obs, was, now) -> field.getStyleClass().remove("invalid"));
+        }
 
-        Button save = new Button("Save");
+        Button save = new Button("Save product");
         save.setDefaultButton(true);
         save.setOnAction(e -> saveFromForm());
         Button newProduct = new Button("New product");
-        newProduct.setOnAction(e -> table.getSelectionModel().clearSelection());
+        newProduct.setOnAction(e -> {
+            if (!canLeave()) {
+                return;
+            }
+            table.getSelectionModel().clearSelection();
+            clearForm();
+            sku.requestFocus();
+        });
 
-        VBox form = new VBox(10, formTitle, grid, new HBox(8, save, newProduct), message);
+        VBox fields = new VBox(12, Ui.muted("* Required. Other fields are optional or use the shown defaults."),
+                section("Product details", identity), section("Pricing", pricing),
+                section("Inventory", inventory), active, giftCard);
+        ScrollPane scroll = new ScrollPane(fields);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add("page-scroll");
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        VBox form = new VBox(10, formTitle, scroll, message, new HBox(8, save, newProduct));
         form.setPadding(new Insets(0, 0, 0, 16));
         form.setMinWidth(340);
+        listPane.setPadding(new Insets(0, 12, 0, 0));
 
-        setCenter(listPane);
-        setRight(form);
+        setCenter(Ui.split(.56, listPane, form));
         setPadding(new Insets(0, 0, 0, 0));
 
         onShow();
     }
 
+    private static VBox section(String title, Node content) {
+        Label heading = new Label(title);
+        heading.getStyleClass().add("section-title");
+        return new VBox(8, heading, content);
+    }
+
+    private static void formRow(GridPane grid, int row, String text, Node input) {
+        Label label = new Label(text);
+        label.setMinWidth(105);
+        label.setLabelFor(input);
+        GridPane.setHgrow(input, Priority.ALWAYS);
+        if (input instanceof TextField field) {
+            field.setPrefColumnCount(10);
+        }
+        grid.addRow(row, label, input);
+    }
+
     @Override
     public void onShow() {
+        if (hasDraft()) {
+            return;
+        }
         reloadLists();
         reloadProducts();
         if (selected == null) {
@@ -182,12 +321,16 @@ final class ProductsView extends BorderPane implements Screen {
 
     /** Shows the products matching the search text and the status choice. */
     private void applyFilter() {
+        shown.setPredicate(this::matchesFilter);
+    }
+
+    private boolean matchesFilter(Product p) {
         String text = filter.getText() == null ? "" : filter.getText().trim().toLowerCase(Locale.ROOT);
         String choice = status.getValue() == null ? ALL : status.getValue();
-        shown.setPredicate(p -> (text.isEmpty()
+        return (text.isEmpty()
                 || p.name().toLowerCase(Locale.ROOT).contains(text)
                 || p.sku().toLowerCase(Locale.ROOT).contains(text))
-                && matchesStatus(p, choice));
+                && matchesStatus(p, choice);
     }
 
     private static boolean matchesStatus(Product p, String choice) {
@@ -222,6 +365,7 @@ final class ProductsView extends BorderPane implements Screen {
         active.setSelected(product.active());
         giftCard.setSelected(product.isGiftCard());
         message.setText("");
+        baseline = formValues();
     }
 
     private void clearForm() {
@@ -243,10 +387,15 @@ final class ProductsView extends BorderPane implements Screen {
         active.setSelected(true);
         giftCard.setSelected(false);
         message.setText("");
+        for (TextField field : List.of(sku, name, price, cost, taxPercent, reorderLevel, reorderQty, initialStock)) {
+            field.getStyleClass().remove("invalid");
+        }
+        baseline = formValues();
     }
 
     /** Saves the form. A problem is shown above the buttons and everything typed stays where it is. */
     private void saveFromForm() {
+        resolving = true;
         try {
             save();
         } catch (PosException e) {
@@ -254,10 +403,19 @@ final class ProductsView extends BorderPane implements Screen {
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "Saving a product failed", e);
             message.setText("Something went wrong. The details were written to the log.");
+        } finally {
+            resolving = false;
         }
     }
 
     private void save() {
+        for (TextField field : List.of(sku, name, price, taxPercent)) {
+            if (field.getText().isBlank()) {
+                field.getStyleClass().add("invalid");
+                field.requestFocus();
+                throw new BusinessException("Complete the required SKU, name, price and tax rate fields. Use 0 for no tax.");
+            }
+        }
         ProductDraft draft = new ProductDraft(
                 sku.getText().trim(),
                 barcode.getText(),
@@ -310,6 +468,8 @@ final class ProductsView extends BorderPane implements Screen {
         Button add = new Button("+");
         add.setTooltip(new Tooltip("Add new"));
         add.setOnAction(e -> Ui.attempt(onAdd));
+        box.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(box, Priority.ALWAYS);
         return new HBox(6, box, add);
     }
 

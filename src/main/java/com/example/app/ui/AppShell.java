@@ -52,11 +52,13 @@ public final class AppShell extends StackPane {
     private final User user;
     private final Runnable onLogout;
     private final BorderPane layout = new BorderPane();
+    private final BorderPane workspace = new BorderPane();
     private final Label shiftPill = new Label();
     private final Label heldPill = new Label();
     private final Map<String, Node> screens = new HashMap<>();
     private final List<NavItem> navItems = new ArrayList<>();
     private final VBox sidebar = new VBox(4);
+    private final IdleLock idleLock;
 
     public AppShell(AppServices services, UiPrefs prefs, Runnable onLogout) {
         this.services = services;
@@ -69,8 +71,27 @@ public final class AppShell extends StackPane {
         store.getStyleClass().add("title");
         shiftPill.getStyleClass().add("pill");
         heldPill.getStyleClass().add("pill");
-        Label who = Ui.muted(user.username() + " (" + roleLabel(user.role()) + ")");
+        Label avatar = new Label(user.username().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+        avatar.getStyleClass().add("account-avatar");
+        avatar.setMinSize(38, 38);
+        avatar.setPrefSize(38, 38);
+        avatar.setMaxSize(38, 38);
+        avatar.setAlignment(Pos.CENTER);
+        Label accountName = new Label(user.username());
+        accountName.getStyleClass().add("account-name");
+        accountName.setMaxWidth(150);
+        accountName.setTooltip(new Tooltip(user.username()));
+        Label accountRole = new Label(roleLabel(user.role()));
+        accountRole.getStyleClass().add("account-role");
+        VBox identity = new VBox(2, accountName, accountRole);
+        identity.setAlignment(Pos.CENTER_LEFT);
+        HBox who = new HBox(10, avatar, identity);
+        who.setId("account-identity");
+        who.getStyleClass().add("account-identity");
+        who.setAlignment(Pos.CENTER_LEFT);
+        who.setAccessibleText("Signed in as " + user.username() + ", " + roleLabel(user.role()));
         Button logout = new Button("Log out", Icons.icon("logout"));
+        logout.getStyleClass().add("logout-button");
         logout.setOnAction(e -> Ui.attempt(this::logOut));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -89,7 +110,12 @@ public final class AppShell extends StackPane {
         addNav("Users", "users", () -> new UsersView(services), Role.ADMIN);
         addNav("Settings", "settings", () -> new SettingsView(services, prefs), Role.ADMIN);
         sidebar.getStyleClass().add("sidebar");
-        layout.setLeft(sidebar);
+        var navigationSplit = Ui.split(.18, sidebar, workspace);
+        navigationSplit.getStyleClass().add("navigation-split");
+        sidebar.setMinWidth(176);
+        sidebar.setMaxWidth(280);
+        workspace.setMinWidth(500);
+        layout.setCenter(navigationSplit);
 
         setOnKeyPressed(e -> {
             KeyCode code = e.getCode();
@@ -107,7 +133,8 @@ public final class AppShell extends StackPane {
         });
 
         // The idle lock watches this whole stack, so it covers the header and sidebar as well as the screens.
-        new IdleLock(services, this, prefs.idleLimit()).start();
+        idleLock = new IdleLock(services, this, prefs.idleLimit());
+        idleLock.start();
 
         navItems.get(0).button().fire();
     }
@@ -127,11 +154,18 @@ public final class AppShell extends StackPane {
     }
 
     private void show(NavItem item) {
+        Node current = workspace.getCenter();
+        if (current != null && current == screens.get(item.name())) {
+            return;
+        }
+        if (!canLeave()) {
+            return;
+        }
         Node screen = screens.computeIfAbsent(item.name(), n -> item.factory().get());
         if (screen instanceof Screen refreshable) {
             refreshable.onShow();
         }
-        layout.setCenter(screen);
+        workspace.setCenter(screen);
         BorderPane.setMargin(screen, new Insets(14));
         for (NavItem other : navItems) {
             other.button().getStyleClass().remove("selected");
@@ -162,13 +196,24 @@ public final class AppShell extends StackPane {
 
     /** Logs out, asking first if a sale is in progress, because logging out discards the cart. */
     private void logOut() {
+        if (!canLeave()) {
+            return;
+        }
         Node checkout = screens.get("Checkout");
         boolean saleInProgress = checkout instanceof CheckoutView view && view.hasItems();
         if (saleInProgress && !Ui.confirm("Discard the sale in progress and log out?")) {
             return;
         }
         services.auth().logout();
+        if (checkout instanceof CheckoutView view) {
+            view.clearSessionReceipt();
+        }
+        idleLock.stop();
         onLogout.run();
+    }
+
+    public boolean canLeave() {
+        return !(workspace.getCenter() instanceof Screen screen) || screen.canLeave();
     }
 
     private static String roleLabel(Role role) {

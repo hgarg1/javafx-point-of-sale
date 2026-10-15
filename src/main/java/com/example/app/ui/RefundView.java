@@ -88,13 +88,24 @@ final class RefundView extends VBox implements Screen {
         });
         restock.setSelected(true);
         reason.setPromptText("Required, e.g. customer returned item");
+        reason.setId("refund-reason");
+        reason.setPrefColumnCount(36);
+        reason.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(reason, Priority.ALWAYS);
+        receiptNo.setPrefColumnCount(24);
+        receiptNo.setMaxWidth(480);
+        method.setMinWidth(210);
         Button submit = new Button("Record refund");
         submit.getStyleClass().add("primary");
         submit.setOnAction(e -> Ui.attempt(this::submit));
 
         HBox lookup = new HBox(8, new Label("Receipt"), receiptNo, find);
-        HBox options = new HBox(12, new Label("Pay back to"), method, restock);
+        var options = Ui.actions(new Label("Pay back to"), method, restock);
         HBox reasonRow = new HBox(8, new Label("Reason"), reason);
+        reasonRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        lookup.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox.setHgrow(receiptNo, Priority.ALWAYS);
+        ((Label) reasonRow.getChildren().getFirst()).setLabelFor(reason);
         getChildren().addAll(Ui.heading("Refunds"), lookup, saleInfo, refundable, lines, options, reasonRow,
                 new HBox(8, submit), message);
     }

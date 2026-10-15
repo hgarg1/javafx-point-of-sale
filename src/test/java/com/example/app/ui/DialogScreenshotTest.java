@@ -27,6 +27,50 @@ class DialogScreenshotTest {
 
     private static final Path OUT = Path.of("target", "screens");
 
+    @Test
+    void renderPaymentFailureWithInputsPreserved() throws Exception {
+        try (AppServices app = new AppServices("jdbc:h2:mem:" + UUID.randomUUID()
+                + ";DB_CLOSE_DELAY=-1", new PasswordHasher(1000))) {
+            DemoData.seed(app);
+            app.auth().login("owner", "owner-pass-1");
+            onFxThread(() -> {
+                for (ThemeManager.Mode mode : new ThemeManager.Mode[]{ThemeManager.Mode.LIGHT, ThemeManager.Mode.DARK}) {
+                    ThemeManager.setMode(mode);
+                    Dialog<ButtonType> dialog = PaymentDialog.build(app, 2450, payments -> {
+                        throw new com.example.app.error.BusinessException("Card declined. Check the reference or choose another payment type.");
+                    });
+                    dialog.show();
+                    try {
+                        var content = (javafx.scene.layout.VBox) dialog.getDialogPane().getContent();
+                        var paymentContent = (javafx.scene.layout.VBox) content.getChildren().getFirst();
+                        var grid = (javafx.scene.layout.GridPane) paymentContent.getChildren().getFirst();
+                        javafx.scene.control.TextField card = grid.getChildren().stream()
+                                .filter(node -> node instanceof javafx.scene.control.TextField field
+                                        && "Card number".equals(field.getPromptText()))
+                                .map(node -> (javafx.scene.control.TextField) node).findFirst().orElseThrow();
+                        Integer row = javafx.scene.layout.GridPane.getRowIndex(card);
+                        grid.getChildren().stream()
+                                .filter(node -> node instanceof javafx.scene.control.TextField
+                                        && row.equals(javafx.scene.layout.GridPane.getRowIndex(node))
+                                        && Integer.valueOf(1).equals(javafx.scene.layout.GridPane.getColumnIndex(node)))
+                                .map(node -> (javafx.scene.control.TextField) node).findFirst().orElseThrow().setText("24.50");
+                        card.setText("4111111111110002");
+                        ((javafx.scene.control.Button) dialog.getDialogPane().lookupButton(
+                                dialog.getDialogPane().getButtonTypes().getFirst())).fire();
+                        DialogPane pane = dialog.getDialogPane();
+                        pane.applyCss();
+                        pane.layout();
+                        PngWriter.write(pane.snapshot(null, null), OUT.resolve("payment-error-"
+                                + mode.name().toLowerCase() + ".png"));
+                    } finally {
+                        dialog.close();
+                    }
+                }
+                return null;
+            });
+        }
+    }
+
     @BeforeAll
     static void startToolkit() {
         try {

@@ -31,6 +31,12 @@ class ThemeContrastTest {
             {"-color-danger", "-color-surface"},
             {"-color-danger-text", "-color-danger"},
             {"-color-success-text", "-color-success"},
+            {"-color-text", "-color-button-hover"},
+            {"-color-text", "-color-selected-hover"},
+            {"-color-accent-text", "-color-accent-hover"},
+            {"-color-accent-text", "-color-accent-pressed"},
+            {"-color-danger", "-color-danger-soft"},
+            {"-color-danger-text", "-color-danger-hover"},
     };
 
     @Test
@@ -44,6 +50,16 @@ class ThemeContrastTest {
         Map<String, String> tokens = tokens(ROOT);
         tokens.putAll(tokens(DARK_ROOT));
         assertReadable("dark", tokens);
+    }
+
+    @Test
+    void entryScreenThemes() throws IOException {
+        Map<String, String> base = tokens(ROOT);
+        base.putAll(tokens(Pattern.compile("\\.root\\.auth-shell\\s*\\{([^}]*)\\}")));
+        assertReadable("entry light", base);
+        base.putAll(tokens(DARK_ROOT));
+        base.putAll(tokens(Pattern.compile("\\.root\\.auth-shell\\.dark\\s*\\{([^}]*)\\}")));
+        assertReadable("entry dark", base);
     }
 
     private static void assertReadable(String mode, Map<String, String> tokens) {

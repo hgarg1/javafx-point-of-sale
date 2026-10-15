@@ -3,6 +3,8 @@ package com.example.app;
 import com.example.app.db.MigrationException;
 import com.example.app.domain.User;
 import com.example.app.service.AppServices;
+import com.example.app.service.DemoData;
+import com.example.app.service.SettingsService;
 import com.example.app.ui.AppShell;
 import com.example.app.ui.ChangePasswordDialog;
 import com.example.app.ui.LoginView;
@@ -43,7 +45,8 @@ public class App extends Application {
     @Override
     public void start(Stage stage) throws IOException {
         this.stage = stage;
-        this.home = homeFolder();
+        boolean demo = Boolean.getBoolean("pos.demo");
+        this.home = homeFolder(demo);
         try {
             AppLog.install(home.resolve("logs"));
         } catch (IOException e) {
@@ -55,6 +58,14 @@ public class App extends Application {
 
         try {
             services = new AppServices(jdbcUrl(home), new PasswordHasher(), home.resolve("backups"));
+            if (demo && services.auth().needsSetup()) {
+                DemoData.seed(services);
+                services.auth().login(DemoData.OWNER, DemoData.OWNER_PASSWORD);
+                var current = services.storeSettings().current();
+                services.storeSettings().update(new SettingsService.StoreSettings("Demo Store", current.currency(),
+                        current.locale(), current.discountApprovalBp(), current.allowNegativeStock(), current.receiptFooter()));
+                services.auth().logout();
+            }
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "The database could not be opened", e);
             Alert alert = new Alert(Alert.AlertType.ERROR, startupMessage(e), ButtonType.OK);
@@ -65,7 +76,7 @@ public class App extends Application {
             return;
         }
 
-        stage.setTitle(services.storeName() + " - Point of Sale");
+        stage.setTitle(services.storeName() + " - Point of Sale" + (demo ? " [DEMO]" : ""));
         stage.setMinWidth(1024);
         stage.setMinHeight(680);
         Optional<double[]> saved = prefs.window();
@@ -80,6 +91,12 @@ public class App extends Application {
             stage.setHeight(740);
         }
         stage.setOnHidden(e -> rememberWindow());
+        stage.setOnCloseRequest(e -> {
+            if (stage.getScene() != null && stage.getScene().getRoot() instanceof AppShell shell
+                    && !shell.canLeave()) {
+                e.consume();
+            }
+        });
 
         if (services.auth().needsSetup()) {
             showSetup();
@@ -113,11 +130,13 @@ public class App extends Application {
     }
 
     private void showSetup() {
-        stage.setScene(ThemeManager.newScene(new SetupView(services, this::onLoggedIn), 460, 440));
+        stage.setScene(ThemeManager.newScene(new SetupView(services, this::onLoggedIn),
+                Math.max(1024, stage.getWidth()), Math.max(680, stage.getHeight())));
     }
 
     private void showLogin() {
-        stage.setScene(ThemeManager.newScene(new LoginView(services, this::onLoggedIn), 420, 360));
+        stage.setScene(ThemeManager.newScene(new LoginView(services, this::onLoggedIn),
+                Math.max(1024, stage.getWidth()), Math.max(680, stage.getHeight())));
     }
 
     private void onLoggedIn(User user) {
@@ -131,7 +150,11 @@ public class App extends Application {
 
     /** Everything the app writes lives under one folder in the user's home directory. */
     static Path homeFolder() {
-        return Path.of(System.getProperty("user.home"), ".cashier-app");
+        return homeFolder(false);
+    }
+
+    static Path homeFolder(boolean demo) {
+        return Path.of(System.getProperty("user.home"), demo ? ".cashier-app-demo" : ".cashier-app");
     }
 
     static String jdbcUrl(Path home) throws IOException {

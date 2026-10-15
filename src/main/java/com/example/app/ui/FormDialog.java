@@ -47,6 +47,10 @@ final class FormDialog {
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(title);
+        dialog.setResizable(true);
+        dialog.getDialogPane().setMinWidth(440);
+        double contentWidth = content instanceof Region region ? region.prefWidth(-1) : 0;
+        dialog.getDialogPane().setPrefWidth(Math.max(620, contentWidth + 64));
         dialog.setHeaderText(header);
         dialog.getDialogPane().setContent(new VBox(10, content, problem));
         dialog.getDialogPane().getButtonTypes().addAll(ok, ButtonType.CANCEL);
@@ -62,7 +66,14 @@ final class FormDialog {
         }
 
         Button okButton = (Button) dialog.getDialogPane().lookupButton(ok);
+        boolean[] submitting = {false};
         okButton.addEventFilter(ActionEvent.ACTION, event -> {
+            if (submitting[0]) {
+                event.consume();
+                return;
+            }
+            submitting[0] = true;
+            okButton.setDisable(true);
             try {
                 onOk.run();
                 problem.setText("");
@@ -73,6 +84,9 @@ final class FormDialog {
                 LOG.log(Level.SEVERE, "Dialog action failed", e);
                 problem.setText("Something went wrong. The details were written to the log.");
                 event.consume();
+            } finally {
+                submitting[0] = false;
+                okButton.setDisable(false);
             }
         });
 

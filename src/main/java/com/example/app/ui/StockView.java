@@ -74,15 +74,18 @@ final class StockView extends BorderPane implements Screen {
         Button stockTake = new Button("Stock take...");
         stockTake.setOnAction(e -> Ui.attempt(this::stockTake));
         lowStockOnly.setOnAction(e -> Ui.attempt(this::reload));
-        HBox actions = new HBox(8, receive, adjust, waste, stockTake, lowStockOnly);
+        var actions = Ui.actions(receive, adjust, waste, stockTake, lowStockOnly);
 
         VBox top = new VBox(8, Ui.heading("Stock"), actions, products, message);
         top.setPadding(new Insets(0, 0, 12, 0));
         VBox bottom = new VBox(6, historyTitle, history);
         VBox.setVgrow(history, Priority.ALWAYS);
 
-        setTop(top);
-        setCenter(bottom);
+        var split = Ui.split(.55, top, bottom);
+        split.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        top.setMinHeight(180);
+        bottom.setMinHeight(160);
+        setCenter(split);
         setPadding(new Insets(12));
         onShow();
     }

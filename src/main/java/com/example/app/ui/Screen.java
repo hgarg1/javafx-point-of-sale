@@ -7,4 +7,8 @@ package com.example.app.ui;
 interface Screen {
 
     void onShow();
+
+    default boolean canLeave() {
+        return true;
+    }
 }

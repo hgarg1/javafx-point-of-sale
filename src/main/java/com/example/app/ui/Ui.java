@@ -10,6 +10,12 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.layout.GridPane;
+import javafx.scene.Node;
+import javafx.scene.control.SplitPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -141,8 +147,46 @@ final class Ui {
 
     static GridPane grid() {
         GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(8);
+        grid.setHgap(16);
+        grid.setVgap(12);
+        ColumnConstraints labels = new ColumnConstraints();
+        labels.setMinWidth(100);
+        labels.setMaxWidth(175);
+        ColumnConstraints values = new ColumnConstraints();
+        values.setHgrow(Priority.ALWAYS);
+        values.setMinWidth(120);
+        grid.getColumnConstraints().addAll(labels, values);
+        grid.getChildren().addListener((javafx.collections.ListChangeListener<Node>) change -> {
+            while (change.next()) {
+                for (Node node : change.getAddedSubList()) {
+                    Integer column = GridPane.getColumnIndex(node);
+                    if (column != null && column > 0 && node instanceof Region region) {
+                        GridPane.setHgrow(node, Priority.ALWAYS);
+                        region.setMaxWidth(Double.MAX_VALUE);
+                    }
+                }
+            }
+        });
         return grid;
+    }
+
+    static FlowPane actions(Node... nodes) {
+        FlowPane pane = new FlowPane(10, 10, nodes);
+        pane.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        return pane;
+    }
+
+    /** Content columns have visible draggable dividers and enough minimum space to remain usable. */
+    static SplitPane split(double position, Node... nodes) {
+        SplitPane split = new SplitPane(nodes);
+        split.getStyleClass().add("workspace-split");
+        split.setDividerPositions(position);
+        for (Node node : nodes) {
+            if (node instanceof Region region) {
+                region.setMinWidth(Math.max(260, region.getMinWidth()));
+                region.setMaxWidth(Double.MAX_VALUE);
+            }
+        }
+        return split;
     }
 }

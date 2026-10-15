@@ -45,7 +45,7 @@ final class UsersView extends VBox implements Screen {
         Button reset = new Button("Reset password...");
         reset.setOnAction(e -> Ui.attempt(this::resetPassword));
 
-        getChildren().addAll(Ui.heading("Users"), new HBox(8, create, role, toggle, reset), table, message);
+        getChildren().addAll(Ui.heading("Users"), Ui.actions(create, role, toggle, reset), table, message);
         onShow();
     }
 

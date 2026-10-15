@@ -65,7 +65,9 @@ public final class ThemeManager {
         if (!root.getStylesheets().contains(STYLESHEET)) {
             root.getStylesheets().add(STYLESHEET);
         }
-        ROOTS.add(new WeakReference<>(root));
+        if (ROOTS.stream().noneMatch(reference -> reference.get() == root)) {
+            ROOTS.add(new WeakReference<>(root));
+        }
         listenToSystemChanges();
         refresh(root);
     }
@@ -83,7 +85,16 @@ public final class ThemeManager {
     }
 
     private static void refresh(Parent root) {
-        root.getStyleClass().removeAll("dark", "compact", "touch");
+        // Theme changes must settle together so text never fades through an unreadable colour.
+        root.getStyleClass().add("theme-changing");
+        root.getStyleClass().removeAll("dark", "compact", "touch", "reduced-motion");
+        try {
+            if (Platform.getPreferences().isReducedMotion()) {
+                root.getStyleClass().add("reduced-motion");
+            }
+        } catch (RuntimeException unavailable) {
+            // Some platforms do not expose accessibility preferences.
+        }
         if (isDark()) {
             root.getStyleClass().add("dark");
         }
@@ -94,6 +105,10 @@ public final class ThemeManager {
                 // comfortable is the stylesheet's default; no class needed
             }
         }
+        if (root.getScene() != null) {
+            root.applyCss();
+        }
+        root.getStyleClass().remove("theme-changing");
     }
 
     private static boolean systemIsDark() {
@@ -110,12 +125,22 @@ public final class ThemeManager {
             return;
         }
         listening = true;
+        javafx.stage.Window.getWindows().addListener((javafx.collections.ListChangeListener<javafx.stage.Window>) change -> {
+            while (change.next()) {
+                for (javafx.stage.Window window : change.getAddedSubList()) {
+                    if (window instanceof javafx.stage.PopupWindow && window.getScene() != null) {
+                        apply(window.getScene().getRoot());
+                    }
+                }
+            }
+        });
         try {
             Platform.getPreferences().colorSchemeProperty().addListener((obs, was, now) -> {
                 if (mode == Mode.SYSTEM) {
                     refreshAll();
                 }
             });
+            Platform.getPreferences().reducedMotionProperty().addListener((obs, was, now) -> refreshAll());
         } catch (RuntimeException e) {
             // The platform does not report a colour scheme; the light theme is used.
         }

@@ -102,7 +102,7 @@ final class SettingsView extends ScrollPane implements Screen {
                 + "folder, and the ten most recent are kept. To restore, close the app, then copy a backup's database "
                 + "file back over the one in the data folder.");
         dataNote.setWrapText(true);
-        VBox dataCard = new VBox(10, Ui.heading("Data"), dataNote, new HBox(8, stockCheck, backup), dataMessage);
+        VBox dataCard = new VBox(10, Ui.heading("Data"), dataNote, Ui.actions(stockCheck, backup), dataMessage);
         dataCard.getStyleClass().add("card");
 
         tenderTable.getColumns().addAll(
@@ -127,16 +127,19 @@ final class SettingsView extends ScrollPane implements Screen {
             reloadTenders();
         }));
         deleteTender.setOnAction(e -> Ui.attempt(this::deleteSelectedTender));
+        deleteTender.getStyleClass().add("danger-quiet");
         Label tenderNote = Ui.muted("Built-in cash is always on, and cash types always count in the drawer. A payment type "
                 + "that has been used cannot be deleted; turn it off instead. A type that is off is not offered, but refunds "
                 + "on old sales still work.");
         tenderNote.setWrapText(true);
         VBox tendersCard = new VBox(10, Ui.heading("Payment types"), tenderNote, tenderTable,
-                new HBox(8, addTender, renameTender, toggleTender, moveTenderUp, moveTenderDown),
-                new HBox(8, drawerTender, deleteTender));
+                Ui.actions(addTender, renameTender, toggleTender, moveTenderUp, moveTenderDown, drawerTender, deleteTender));
         tendersCard.getStyleClass().add("card");
 
-        HBox row = new HBox(16, storeCard, appearanceCard);
+        var row = Ui.split(.56, storeCard, appearanceCard);
+        storeCard.setMinWidth(340);
+        appearanceCard.setMinWidth(320);
+        row.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         VBox content = new VBox(14, row, tendersCard, dataCard);
         content.setPadding(new Insets(16));
         getStyleClass().add("page-scroll");
@@ -308,6 +311,9 @@ final class SettingsView extends ScrollPane implements Screen {
     }
 
     private static HBox withSuffix(TextField field, String suffix) {
+        field.setPrefColumnCount(6);
+        field.setMinWidth(70);
+        HBox.setHgrow(field, javafx.scene.layout.Priority.ALWAYS);
         return new HBox(8, field, new Label(suffix));
     }
 

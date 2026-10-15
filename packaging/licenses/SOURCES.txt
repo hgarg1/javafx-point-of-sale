@@ -1,0 +1,11 @@
+H2 2.5.252 is used unmodified under the Mozilla Public License 2.0.
+H2-LICENSE.html is the project's licence page, including the full MPL 2.0 text.
+Licence source: https://raw.githubusercontent.com/h2database/h2database/version-2.5.252/h2/src/docsrc/html/license.html
+Corresponding source: https://github.com/h2database/h2database/tree/version-2.5.252
+
+Eclipse Temurin and OpenJFX notices are retained by jlink under runtime/legal.
+Corresponding sources:
+https://github.com/adoptium/temurin26-binaries/releases/tag/jdk-26.0.2.1%2B1
+https://github.com/openjdk/jfx/releases/tag/26.0.2
+
+No project-wide redistribution licence has been assigned. These builds are for private testing.
